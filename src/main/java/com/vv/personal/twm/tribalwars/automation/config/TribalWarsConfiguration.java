@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Scope;
 
 /**
  * @author Vivek
@@ -25,6 +26,7 @@ public class TribalWarsConfiguration {
     private String ssoLocation;
 
     @Lazy
+    @Scope("prototype") //So that on each call, the driver is recreated and then killed
     @Bean(destroyMethod = "shutDownDriver")
     public AutomationDriver driver() {
         return new AutomationDriver(geckoDriverLocation);

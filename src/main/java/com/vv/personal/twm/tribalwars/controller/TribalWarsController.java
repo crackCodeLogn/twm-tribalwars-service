@@ -4,6 +4,7 @@ import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
 import com.vv.personal.twm.tribalwars.automation.config.TribalWarsConfiguration;
 import com.vv.personal.twm.tribalwars.automation.engine.Engine;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
+import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +24,9 @@ public class TribalWarsController {
 
     @Autowired
     private TribalWarsConfiguration tribalWarsConfiguration;
+
+    @Autowired
+    private RenderServiceFeign renderServiceFeign;
 
     @PostMapping("/addVilla")
     public String addVilla(@RequestBody VillaProto.Villa newVilla) {
@@ -49,6 +53,7 @@ public class TribalWarsController {
     @GetMapping("/read/all")
     public VillaProto.VillaList readAllVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
                                                       @RequestParam(defaultValue = "9") int worldNumber) {
+        //Strange, somehow this tab doesn't open in swagger. Rest all do though.
         String world = "en" + worldType + worldNumber;
         LOGGER.info("Obtained request to read all villas for world {}", world);
         try {
@@ -65,8 +70,11 @@ public class TribalWarsController {
     public String triggerAutomationForTroops(@RequestParam(defaultValue = "p") String worldType,
                                              @RequestParam(defaultValue = "9") int worldNumber) {
         LOGGER.info("Will start automated extraction of troops count for en{}{}", worldType, worldNumber);
-        Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
-        engine.initiateReadingAllVillasForWorld();
+        final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
+        String overviewHtml = engine.extractOverviewDetailsForWorld();
+        LOGGER.info("Extracted Overview html from world. Length: {}", overviewHtml.length());
+        VillaProto.VillaList villaListBuilder = renderServiceFeign.parseTribalWarsOverviewHtml(overviewHtml);
+        LOGGER.info("{}", villaListBuilder);
         return "DONE!";
     }
 }
