@@ -3,7 +3,7 @@ spring:
     name: twm-tribalwars-service
 
 server:
-  port: ${EUREKA_REGISTRATION_PORT:0}
+  port: ${EUREKA_REGISTRATION_PORT:23555}
 
 eureka:
   client:

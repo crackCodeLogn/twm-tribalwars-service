@@ -1,7 +1,8 @@
 package com.vv.personal.twm.tribalwars.controller;
 
-import com.vv.personal.twm.artifactory.generated.deposit.FixedDepositProto;
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
+import com.vv.personal.twm.tribalwars.automation.config.TribalWarsConfiguration;
+import com.vv.personal.twm.tribalwars.automation.engine.Engine;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,9 @@ public class TribalWarsController {
 
     @Autowired
     private MongoServiceFeign mongoServiceFeign;
+
+    @Autowired
+    private TribalWarsConfiguration tribalWarsConfiguration;
 
     @PostMapping("/addVilla")
     public String addVilla(@RequestBody VillaProto.Villa newVilla) {
@@ -43,7 +47,9 @@ public class TribalWarsController {
     }
 
     @GetMapping("/read/all")
-    public VillaProto.VillaList readAllVillasForWorld(@RequestParam(defaultValue = "enp9") String world) {
+    public VillaProto.VillaList readAllVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
+                                                      @RequestParam(defaultValue = "9") int worldNumber) {
+        String world = "en" + worldType + worldNumber;
         LOGGER.info("Obtained request to read all villas for world {}", world);
         try {
             VillaProto.VillaList villaList = mongoServiceFeign.readAllVillasFromMongo(world);
@@ -53,5 +59,14 @@ public class TribalWarsController {
             LOGGER.error("Failed to get villas from mongo for world {}", world, e);
         }
         return VillaProto.VillaList.newBuilder().build();
+    }
+
+    @GetMapping("/triggerAutomation/troops")
+    public String triggerAutomationForTroops(@RequestParam(defaultValue = "p") String worldType,
+                                             @RequestParam(defaultValue = "9") int worldNumber) {
+        LOGGER.info("Will start automated extraction of troops count for en{}{}", worldType, worldNumber);
+        Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
+        engine.initiateReadingAllVillasForWorld();
+        return "DONE!";
     }
 }
