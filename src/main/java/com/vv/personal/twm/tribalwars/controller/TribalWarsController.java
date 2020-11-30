@@ -1,7 +1,9 @@
 package com.vv.personal.twm.tribalwars.controller;
 
+import com.vv.personal.twm.artifactory.generated.tw.HtmlDataParcelProto;
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
 import com.vv.personal.twm.tribalwars.automation.config.TribalWarsConfiguration;
+import com.vv.personal.twm.tribalwars.automation.constants.Constants;
 import com.vv.personal.twm.tribalwars.automation.engine.Engine;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
@@ -9,6 +11,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
+import static com.vv.personal.twm.tribalwars.automation.constants.Constants.TW_SCREEN;
 
 /**
  * @author Vivek
@@ -71,10 +79,45 @@ public class TribalWarsController {
                                              @RequestParam(defaultValue = "9") int worldNumber) {
         LOGGER.info("Will start automated extraction of troops count for en{}{}", worldType, worldNumber);
         final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
-        String overviewHtml = engine.extractOverviewDetailsForWorld();
+        String overviewHtml = engine.extractOverviewDetailsForWorld(); //keeps session open for further op!
         LOGGER.info("Extracted Overview html from world. Length: {}", overviewHtml.length());
         VillaProto.VillaList villaListBuilder = renderServiceFeign.parseTribalWarsOverviewHtml(overviewHtml);
         LOGGER.info("{}", villaListBuilder);
+
+        final VillaProto.VillaList.Builder resultantVillaListBuilder = VillaProto.VillaList.newBuilder();
+        villaListBuilder.getVillasList().forEach(villa -> {
+            Map<Constants.SCREENS, String> screensStringMap = new HashMap<>();
+            Arrays.stream(Constants.SCREENS.values()).forEach(screen -> {
+                String urlToHit = String.format(TW_SCREEN, worldType, worldNumber, villa.getId(), screen.name().toLowerCase());
+                engine.getDriver().loadUrl(urlToHit);
+                String screenHtml = engine.getDriver().getDriver().getPageSource();
+                screensStringMap.put(screen, screenHtml);
+            });
+
+            VillaProto.Troops troops = renderServiceFeign.parseTribalWarsScreens(
+                    generateParcel(
+                            screensStringMap.get(Constants.SCREENS.WALL),
+                            screensStringMap.get(Constants.SCREENS.TRAIN),
+                            screensStringMap.get(Constants.SCREENS.SNOB)));
+
+            VillaProto.Villa.Builder filledVilla = VillaProto.Villa.newBuilder()
+                    .mergeFrom(villa)
+                    .setTroops(troops);
+            resultantVillaListBuilder.addVillas(filledVilla.build());
+        });
+        LOGGER.info("Resultant Villas Info prepared!!");
+        LOGGER.info("{}", resultantVillaListBuilder.build());
+        engine.logoutSequence();
+
+        engine.destroyDriver();
         return "DONE!";
+    }
+
+    private HtmlDataParcelProto.Parcel generateParcel(String wallHtml, String snobHtml, String trainHtml) {
+        return HtmlDataParcelProto.Parcel.newBuilder()
+                .setWallPageSource(wallHtml)
+                .setSnobPageSource(snobHtml)
+                .setTrainPageSource(trainHtml)
+                .build();
     }
 }

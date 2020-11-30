@@ -16,12 +16,11 @@ import static com.vv.personal.twm.tribalwars.automation.constants.Constants.GECK
  */
 public class AutomationDriver {
     private static final Logger LOGGER = LoggerFactory.getLogger(AutomationDriver.class);
-    private final WebDriver driver;
+    private WebDriver driver;
 
     public AutomationDriver(String webDriverLocation) {
         System.setProperty(GECKO_WEBDRIVER, webDriverLocation);
-        this.driver = new FirefoxDriver();
-        LOGGER.info("Driver started now, source being => {}", webDriverLocation);
+        jumpStartDriver();
     }
 
     public void loadUrl(String urlToHit) {
@@ -33,6 +32,11 @@ public class AutomationDriver {
 
         timer.stop();
         LOGGER.info("URL loaded. Time taken: {}s", timer.getTime(TimeUnit.SECONDS));
+    }
+
+    public void jumpStartDriver() {
+        this.driver = new FirefoxDriver();
+        LOGGER.info("Driver started now, source being => {}", System.getProperty(GECKO_WEBDRIVER));
     }
 
     public void shutDownDriver() {

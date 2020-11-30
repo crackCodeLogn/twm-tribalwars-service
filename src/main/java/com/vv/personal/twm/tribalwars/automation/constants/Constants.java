@@ -16,4 +16,10 @@ public class Constants {
     public static final String ID_USER = "user";
     public static final String ID_PASSWORD = "password";
     public static final String CLASS_BTN_LOGIN = "btn-login";
+
+    public static final String EMPTY_STR = "";
+
+    public enum SCREENS {
+        TRAIN, WALL, SNOB
+    }
 }

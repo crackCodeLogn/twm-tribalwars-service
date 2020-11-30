@@ -29,33 +29,47 @@ public class Engine {
 
     public String extractOverviewDetailsForWorld() {
         //SEQUENCE WISE
-        loginSequence();
-        final String overviewSource = driver.getDriver().getPageSource();
-        logoutSequence();
-        return overviewSource;
-    }
-
-    public void loginSequence() {
-        driver.loadUrl(TW_MAIN);
-        sleeper(1.5);
-        driver.getDriver().findElement(By.id(ID_USER)).sendKeys(sso.getUser());
-        driver.getDriver().findElement(By.id(ID_PASSWORD)).sendKeys(sso.getCred());
-        LOGGER.info("Firing Login process now!");
-        try {
-            driver.getDriver().findElement(By.className(CLASS_BTN_LOGIN)).click();
-        } catch (Exception e) {
-            LOGGER.error("Failed to login. ", e);
+        if (loginSequence()) {
+            final String overviewSource = driver.getDriver().getPageSource();
+            //logoutSequence();
+            return overviewSource;
         }
-        sleeper(1.5);
-        driver.loadUrl(String.format(TW_MAIN_PLAY_WORLDS, worldType, worldNumber));
-        sleeper(2.5);
-        driver.loadUrl(String.format(TW_INTRO_SCREEN, worldType, worldNumber));
-        sleeper(.5);
+        return EMPTY_STR;
     }
 
-    public void logoutSequence() {
-        driver.getDriver().findElements(By.linkText("Log out")).get(0).click();
-        driver.shutDownDriver();
+    public boolean loginSequence() {
+        try {
+            driver.loadUrl(TW_MAIN);
+            sleeper(1.5);
+            driver.getDriver().findElement(By.id(ID_USER)).sendKeys(sso.getUser());
+            driver.getDriver().findElement(By.id(ID_PASSWORD)).sendKeys(sso.getCred());
+            LOGGER.info("Firing Login process now!");
+            try {
+                driver.getDriver().findElement(By.className(CLASS_BTN_LOGIN)).click();
+            } catch (Exception e) {
+                LOGGER.error("Failed to login. ", e);
+            }
+            sleeper(1.5);
+            driver.loadUrl(String.format(TW_MAIN_PLAY_WORLDS, worldType, worldNumber));
+            sleeper(2.5);
+            driver.loadUrl(String.format(TW_INTRO_SCREEN, worldType, worldNumber));
+            sleeper(.5);
+            return true;
+        } catch (Exception e) {
+            LOGGER.error("Login sequence failed! ", e);
+        }
+        return false;
+    }
+
+    public boolean logoutSequence() {
+        try {
+            driver.getDriver().findElements(By.linkText("Log out")).get(0).click();
+
+            return true;
+        } catch (Exception e) {
+            LOGGER.error("Failed to have a clean log-out. ", e);
+        }
+        return false;
     }
 
     public void sleeper(double sleepTimeSeconds) {
@@ -65,5 +79,13 @@ public class Engine {
         } catch (InterruptedException e) {
             LOGGER.warn("Sleep for {}s interrupted. ", sleepTimeSeconds, e);
         }
+    }
+
+    public void destroyDriver() {
+        driver.shutDownDriver();
+    }
+
+    public AutomationDriver getDriver() {
+        return driver;
     }
 }
