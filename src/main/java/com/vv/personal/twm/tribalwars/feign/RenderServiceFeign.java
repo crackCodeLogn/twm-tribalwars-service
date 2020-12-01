@@ -19,4 +19,7 @@ public interface RenderServiceFeign {
     //@GetMapping("/render/tw/parse/screens?wall={wall}&train={train}&snob={snob}")
     @PostMapping("/render/tw/parse/screens")
     VillaProto.Troops parseTribalWarsScreens(@RequestBody HtmlDataParcelProto.Parcel parcel);
+
+    @PostMapping("/render/tw/render/villas")
+    String renderTribalWarsVillas(@RequestBody VillaProto.VillaList villas);
 }

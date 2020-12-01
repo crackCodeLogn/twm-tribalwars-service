@@ -103,17 +103,53 @@ public class TribalWarsController {
             VillaProto.Villa.Builder filledVilla = VillaProto.Villa.newBuilder()
                     .mergeFrom(villa)
                     .setTroops(troops);
-            resultantVillaListBuilder.addVillas(filledVilla.build());
+            resultantVillaListBuilder.addVillas(filledVilla);
         });
         LOGGER.info("Resultant Villas Info prepared!!");
         LOGGER.info("{}", resultantVillaListBuilder.build());
         engine.logoutSequence();
-
         engine.destroyDriver();
-        return "DONE!";
+
+        LOGGER.info("Computing type now!");
+        resultantVillaListBuilder.getVillasBuilderList().forEach(villa -> {
+            //decide and freeze type
+            int sp = villa.getTroops().getSp();
+            int sw = villa.getTroops().getSw();
+            int ax = villa.getTroops().getAx();
+            int ar = villa.getTroops().getAr();
+            int lc = villa.getTroops().getLc();
+
+            int semtex = 0; //1,2 -> 1,2,3
+            if (ax >= 500 && lc >= 250) semtex = 1;
+            if (sp >= 500 || sw >= 500 || ar >= 500) semtex += 2;
+
+            switch (semtex) {
+                case 1:
+                    villa.setType(VillaProto.VillaType.OFF);
+                    break;
+                case 2:
+                    villa.setType(VillaProto.VillaType.DEF);
+                    break;
+                default:
+                    villa.setType(VillaProto.VillaType.MIX);
+            }
+            villa.setTimestamp(System.currentTimeMillis()); //setting time of edit
+        });
+        VillaProto.VillaList finalVillaList = resultantVillaListBuilder.build();
+        LOGGER.info("Prepared final villa list proto:-\n{}", finalVillaList);
+
+        try {
+            LOGGER.info("Requesting render of all villas");
+            String renderedInfo = renderServiceFeign.renderTribalWarsVillas(finalVillaList);
+            LOGGER.info("Rendering complete for all villas:\n{}", renderedInfo);
+            return renderedInfo;
+        } catch (Exception e) {
+            LOGGER.error("FAILED to render final villa list! ", e);
+        }
+        return "FAILED!!";
     }
 
-    private HtmlDataParcelProto.Parcel generateParcel(String wallHtml, String snobHtml, String trainHtml) {
+    private HtmlDataParcelProto.Parcel generateParcel(String wallHtml, String trainHtml, String snobHtml) {
         return HtmlDataParcelProto.Parcel.newBuilder()
                 .setWallPageSource(wallHtml)
                 .setSnobPageSource(snobHtml)
