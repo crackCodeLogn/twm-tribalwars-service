@@ -23,4 +23,6 @@ public interface MongoServiceFeign {
     @GetMapping("/mongo/tw/read/all?world={world}")
     VillaProto.VillaList readAllVillasFromMongo(@PathVariable("world") String world);
 
+    @PostMapping("/mongo/tw/addVillas")
+    String addVillas(@RequestBody VillaProto.VillaList villaList);
 }

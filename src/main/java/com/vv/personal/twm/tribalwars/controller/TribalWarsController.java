@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.vv.personal.twm.tribalwars.automation.constants.Constants.EMPTY_STR;
 import static com.vv.personal.twm.tribalwars.automation.constants.Constants.TW_SCREEN;
 
 /**
@@ -35,6 +36,8 @@ public class TribalWarsController {
 
     @Autowired
     private RenderServiceFeign renderServiceFeign;
+
+    private VillaProto.VillaList freshVillaList = null;
 
     @PostMapping("/addVilla")
     public String addVilla(@RequestBody VillaProto.Villa newVilla) {
@@ -111,6 +114,7 @@ public class TribalWarsController {
         engine.destroyDriver();
 
         LOGGER.info("Computing type now!");
+        final long timestamp = System.currentTimeMillis();
         resultantVillaListBuilder.getVillasBuilderList().forEach(villa -> {
             //decide and freeze type
             int sp = villa.getTroops().getSp();
@@ -133,18 +137,27 @@ public class TribalWarsController {
                 default:
                     villa.setType(VillaProto.VillaType.MIX);
             }
-            villa.setTimestamp(System.currentTimeMillis()); //setting time of edit
+            villa.setTimestamp(timestamp); //setting time of edit
         });
         VillaProto.VillaList finalVillaList = resultantVillaListBuilder.build();
         LOGGER.info("Prepared final villa list proto:-\n{}", finalVillaList);
+        this.freshVillaList = finalVillaList;
 
+        String renderedInfo = EMPTY_STR;
         try {
             LOGGER.info("Requesting render of all villas");
-            String renderedInfo = renderServiceFeign.renderTribalWarsVillas(finalVillaList);
+            renderedInfo = renderServiceFeign.renderTribalWarsVillas(finalVillaList);
             LOGGER.info("Rendering complete for all villas:\n{}", renderedInfo);
-            return renderedInfo;
         } catch (Exception e) {
             LOGGER.error("FAILED to render final villa list! ", e);
+        }
+        try {
+            LOGGER.info("Sending data to save to mongo - all villas read");
+            mongoServiceFeign.addVillas(finalVillaList);
+            LOGGER.info("Write successful!");
+            return renderedInfo; //returning renderedInfo to swagger as mongo just sends an OK state or not.
+        } catch (Exception e) {
+            LOGGER.error("Failed to writeback to mongo. ", e);
         }
         return "FAILED!!";
     }
