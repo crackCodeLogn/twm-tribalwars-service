@@ -6,13 +6,13 @@ import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.converter.protobuf.ProtobufHttpMessageConverter;
-import springfox.documentation.swagger2.annotations.EnableSwagger2;
 
 /**
  * @author Vivek
  * @since 29/11/20
+ *
+ * Access point changed to <__>:23555/swagger-ui/index.html
  */
-@EnableSwagger2
 @EnableFeignClients
 @EnableEurekaClient
 @SpringBootApplication
