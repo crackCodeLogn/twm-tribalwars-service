@@ -51,7 +51,7 @@ public class Engine {
             }
             sleeper(1.5);
             driver.loadUrl(String.format(TW_MAIN_PLAY_WORLDS, worldType, worldNumber));
-            sleeper(2.5);
+            sleeper(1.5);
             driver.loadUrl(String.format(TW_INTRO_SCREEN, worldType, worldNumber));
             sleeper(.5);
             return true;
