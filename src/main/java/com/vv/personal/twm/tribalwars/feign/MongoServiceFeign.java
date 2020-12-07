@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
  * @since 29/11/20
  */
 @FeignClient("twm-mongo-service")
-public interface MongoServiceFeign {
+public interface MongoServiceFeign extends HealthFeign {
 
     @PostMapping("/mongo/tw/addVilla")
     String addVilla(@RequestBody VillaProto.Villa newVilla);

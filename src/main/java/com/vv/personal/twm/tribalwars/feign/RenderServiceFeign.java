@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
  * @since 30/11/20
  */
 @FeignClient("twm-rendering-service")
-public interface RenderServiceFeign {
+public interface RenderServiceFeign extends HealthFeign {
 
     @PostMapping("/render/tw/parse/overview")
     VillaProto.VillaList parseTribalWarsOverviewHtml(@RequestBody String Data);
