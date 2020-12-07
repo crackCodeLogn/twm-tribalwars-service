@@ -2,6 +2,11 @@ spring:
   application:
     name: twm-tribalwars-service
 
+  cloud:
+    loadbalancer:
+      ribbon:
+        enabled: false
+
 server:
   port: ${EUREKA_REGISTRATION_PORT:23555}
 
@@ -11,3 +16,10 @@ eureka:
       defaultZone: ${EUREKA_URI:http://localhost:2012/eureka}
   instance:
     preferIpAddress: true
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 10000 #milliseconds
+        readTimeout: 10000
