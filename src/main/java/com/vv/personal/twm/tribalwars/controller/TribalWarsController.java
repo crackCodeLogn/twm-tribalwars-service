@@ -5,6 +5,8 @@ import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
 import com.vv.personal.twm.tribalwars.automation.config.TribalWarsConfiguration;
 import com.vv.personal.twm.tribalwars.automation.constants.Constants;
 import com.vv.personal.twm.tribalwars.automation.engine.Engine;
+import com.vv.personal.twm.tribalwars.config.HealthConfig;
+import com.vv.personal.twm.tribalwars.feign.HealthFeign;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
 import org.slf4j.Logger;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.*;
 
 import static com.vv.personal.twm.tribalwars.automation.constants.Constants.EMPTY_STR;
 import static com.vv.personal.twm.tribalwars.automation.constants.Constants.TW_SCREEN;
@@ -36,6 +39,10 @@ public class TribalWarsController {
 
     @Autowired
     private RenderServiceFeign renderServiceFeign;
+
+    private final ExecutorService pingChecker = Executors.newSingleThreadExecutor();
+    @Autowired
+    private HealthConfig healthConfig;
 
     private VillaProto.VillaList freshVillaList = null;
 
@@ -79,8 +86,15 @@ public class TribalWarsController {
 
     @GetMapping("/triggerAutomation/troops")
     public String triggerAutomationForTroops(@RequestParam(defaultValue = "p") String worldType,
-                                             @RequestParam(defaultValue = "9") int worldNumber) {
+                                             @RequestParam(defaultValue = "9") int worldNumber,
+                                             @RequestParam(defaultValue = "false") boolean writeBackToMongo) {
         LOGGER.info("Will start automated extraction of troops count for en{}{}", worldType, worldNumber);
+        if (!allEndPointsActive()) {
+            LOGGER.error("All end-points not active. Will not trigger op! Check log");
+            return "END-POINTS NOT READY!";
+        }
+        LOGGER.info("All required endpoints active. Initiating run!");
+
         final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
         String overviewHtml = engine.extractOverviewDetailsForWorld(); //keeps session open for further op!
         LOGGER.info("Extracted Overview html from world. Length: {}", overviewHtml.length());
@@ -151,15 +165,16 @@ public class TribalWarsController {
         } catch (Exception e) {
             LOGGER.error("FAILED to render final villa list! ", e);
         }
-        try {
-            LOGGER.info("Sending data to save to mongo - all villas read");
-            mongoServiceFeign.addVillas(finalVillaList);
-            LOGGER.info("Write successful!");
-            return renderedInfo; //returning renderedInfo to swagger as mongo just sends an OK state or not.
-        } catch (Exception e) {
-            LOGGER.error("Failed to writeback to mongo. ", e);
-        }
-        return "FAILED!!";
+        if (writeBackToMongo) {
+            try {
+                LOGGER.info("Sending data to save to mongo - all villas read");
+                mongoServiceFeign.addVillas(finalVillaList);
+                LOGGER.info("Write successful!");
+            } catch (Exception e) {
+                LOGGER.error("Failed to writeback to mongo. ", e);
+            }
+        } else LOGGER.info("Skipping mongo writeback!");
+        return renderedInfo; //returning renderedInfo to swagger as mongo just sends an OK state or not.
     }
 
     private HtmlDataParcelProto.Parcel generateParcel(String wallHtml, String trainHtml, String snobHtml) {
@@ -168,5 +183,36 @@ public class TribalWarsController {
                 .setSnobPageSource(snobHtml)
                 .setTrainPageSource(trainHtml)
                 .build();
+    }
+
+    private boolean allEndPointsActive() {
+        //check for end-points of rendering service and mongo-service
+        int retry = 5, sleepTimeoutSeconds = 3;
+        while (retry-- > 0) {
+            LOGGER.info("Attempting allEndPointsActive test sequence: {}", retry);
+            if (pingResult(createPingTask(mongoServiceFeign)) && pingResult(createPingTask(renderServiceFeign))) return true;
+            try {
+                Thread.sleep(sleepTimeoutSeconds * 1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        return false;
+    }
+
+    private Callable<String> createPingTask(HealthFeign healthFeign) {
+        return healthFeign::ping;
+    }
+
+    private boolean pingResult(Callable<String> pingTask) {
+        Future<String> pingResultFuture = pingChecker.submit(pingTask);
+        try {
+            String pingResult = pingResultFuture.get(healthConfig.getPingTimeout(), TimeUnit.SECONDS);
+            LOGGER.info("Obtained '{}' as ping result for {}", pingResult, pingResult);
+            return true;
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            LOGGER.warn("Timed out waiting on ping, task: {}", pingTask);
+        }
+        return false;
     }
 }
