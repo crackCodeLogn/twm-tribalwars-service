@@ -20,6 +20,6 @@ public class Constants {
     public static final String EMPTY_STR = "";
 
     public enum SCREENS {
-        TRAIN, WALL, SNOB
+        TRAIN, WALL, SNOB, FARM
     }
 }

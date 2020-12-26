@@ -116,10 +116,14 @@ public class TribalWarsController {
                             screensStringMap.get(Constants.SCREENS.WALL),
                             screensStringMap.get(Constants.SCREENS.TRAIN),
                             screensStringMap.get(Constants.SCREENS.SNOB)));
+            String farmStrength = renderServiceFeign
+                    .parseTribalWarsFarmScreens(generateParcel(screensStringMap.get(Constants.SCREENS.FARM)))
+                    .getFarmStrength();
 
             VillaProto.Villa.Builder filledVilla = VillaProto.Villa.newBuilder()
                     .mergeFrom(villa)
-                    .setTroops(troops);
+                    .setTroops(troops)
+                    .setFarmStrength(farmStrength);
             resultantVillaListBuilder.addVillas(filledVilla);
         });
         LOGGER.info("Resultant Villas Info prepared!!");
@@ -182,6 +186,12 @@ public class TribalWarsController {
                 .setWallPageSource(wallHtml)
                 .setSnobPageSource(snobHtml)
                 .setTrainPageSource(trainHtml)
+                .build();
+    }
+
+    private HtmlDataParcelProto.Parcel generateParcel(String farmHtml) {
+        return HtmlDataParcelProto.Parcel.newBuilder()
+                .setFarmPageSource(farmHtml)
                 .build();
     }
 

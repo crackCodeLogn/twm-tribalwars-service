@@ -20,6 +20,9 @@ public interface RenderServiceFeign extends HealthFeign {
     @PostMapping("/render/tw/parse/screens")
     VillaProto.Troops parseTribalWarsScreens(@RequestBody HtmlDataParcelProto.Parcel parcel);
 
+    @PostMapping("/render/tw/parse/screens/farm")
+    VillaProto.Villa parseTribalWarsFarmScreens(@RequestBody HtmlDataParcelProto.Parcel parcel);
+
     @PostMapping("/render/tw/render/villas")
     String renderTribalWarsVillas(@RequestBody VillaProto.VillaList villas);
 }
