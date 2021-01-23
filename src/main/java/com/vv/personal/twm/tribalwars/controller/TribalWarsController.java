@@ -1,6 +1,7 @@
 package com.vv.personal.twm.tribalwars.controller;
 
 import com.vv.personal.twm.artifactory.generated.tw.HtmlDataParcelProto;
+import com.vv.personal.twm.artifactory.generated.tw.SupportReportProto;
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
 import com.vv.personal.twm.tribalwars.automation.config.TribalWarsConfiguration;
 import com.vv.personal.twm.tribalwars.automation.engine.Engine;
@@ -14,12 +15,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import static com.vv.personal.twm.tribalwars.automation.constants.Constants.*;
 
@@ -186,7 +185,10 @@ public class TribalWarsController {
     public String triggerAutomationForSupportReportsAnalysis(@RequestParam(defaultValue = "p") String worldType,
                                                              @RequestParam(defaultValue = "9") int worldNumber,
                                                              @RequestParam(defaultValue = "report") String screen,
-                                                             @RequestParam(defaultValue = "support") String mode) {
+                                                             @RequestParam(defaultValue = "support") String mode,
+                                                             @RequestParam(defaultValue = "Jan") String endReportMonth,
+                                                             @RequestParam(defaultValue = "18") int endReportDay,
+                                                             @RequestParam(defaultValue = "2021") int endReportYear) {
         //TODO -- for now, this will operate on all the reports under support. Later on, come up with idea to control the reports to be read.
         LOGGER.info("Will start automated analysis of support reports for en{}{}", worldType, worldNumber);
         if (!allEndPointsActive(renderServiceFeign)) {
@@ -202,20 +204,110 @@ public class TribalWarsController {
         String url = String.format(TW_REPORT_SCREEN_MODE, worldType, worldNumber, screen, mode);
         engine.getDriver().loadUrl(url); //loads 1st report page
 
+        String twBasePrefix = String.format(TW_URL_WORLD_BASE, worldType, worldNumber);
+
         HtmlDataParcelProto.Parcel reportParcel = generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource());
-        List<String> allReportLinks = renderServiceFeign.parseTribalWarsSupportReportLinks(reportParcel);
+        List<String> allReportLinks = renderServiceFeign.parseTribalWarsSupportReportLinks(reportParcel).stream()
+                .map(reportLink -> twBasePrefix + reportLink).collect(Collectors.toList());
 
         List<String> reportPagesLinks = renderServiceFeign.parseTribalWarsSupportReportsPagesLinks(reportParcel);
         LOGGER.info("Report pages links: {}", reportPagesLinks);
-        String twBasePrefix = String.format(TW_URL_WORLD_BASE, worldType, worldNumber);
         reportPagesLinks.forEach(pageLink -> {
             engine.getDriver().loadUrl(twBasePrefix + pageLink);
-            allReportLinks.addAll(renderServiceFeign.parseTribalWarsSupportReportLinks(generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource())));
+            allReportLinks.addAll(renderServiceFeign.parseTribalWarsSupportReportLinks(generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource()))
+                    .stream().map(reportLink -> twBasePrefix + reportLink).collect(Collectors.toList()));
         });
         LOGGER.info("All support report links to analyze: {}", allReportLinks);
 
+        List<SupportReportProto.SupportReport> supportReportList = new LinkedList<>();
+        allReportLinks.forEach(reportLink -> {
+            engine.getDriver().loadUrl(reportLink);
+            supportReportList.add(renderServiceFeign.parseTribalWarsSupportReport(
+                    generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource())));
+        });
+
+        Map<String, SupportReportProto.Troops.Builder> playerXSupportTroopsAcquired = computePlayerXSupportTroops(SupportReportProto.SupportReportType.ACQUIRED, supportReportList);
+        LOGGER.info("Entire acquired player x troops mapping => ");
+        playerXSupportTroopsAcquired.forEach((player, troops) -> LOGGER.info("{} x \n{}", player, troops));
+
+        Map<String, SupportReportProto.Troops.Builder> playerXSupportTroopsReturned = computePlayerXSupportTroops(SupportReportProto.SupportReportType.SENT_BACK, supportReportList);
+        LOGGER.info("Entire sent back player x troops mapping => ");
+        playerXSupportTroopsReturned.forEach((player, troops) -> LOGGER.info("{} x \n{}", player, troops));
+
+        engine.logoutSequence();
         engine.destroyDriver();
-        return "";
+
+        LOGGER.info("Computing the lost support troops now.");
+        Map<String, SupportReportProto.Troops> playerXSupportTroopsLost = computeLostSupportTroops(playerXSupportTroopsAcquired, playerXSupportTroopsReturned);
+        LOGGER.info("Entire player x lost support troops mapping => ");
+        playerXSupportTroopsLost.forEach((player, troops) -> LOGGER.info("{} x \n{}", player, troops));
+
+        return playerXSupportTroopsLost.toString();
+    }
+
+    private Map<String, SupportReportProto.Troops.Builder> computePlayerXSupportTroops(SupportReportProto.SupportReportType supportReportType, List<SupportReportProto.SupportReport> supportReportList) {
+        Map<String, SupportReportProto.Troops.Builder> playerXSupportTroops = new HashMap<>();
+        //computing first the total support received ->
+        supportReportList.stream()
+                .filter(supportReport -> supportReport.getSupportReportType().equals(supportReportType))
+                .forEach(supportReport -> {
+                    String player = supportReport.getFrom();
+                    if (supportReportType == SupportReportProto.SupportReportType.SENT_BACK) player = supportReport.getTo();
+
+                    SupportReportProto.Troops troops = supportReport.getTroops();
+                    SupportReportProto.Troops.Builder troopsBuilderFromMap = playerXSupportTroops.get(player);
+                    if (troopsBuilderFromMap == null) {
+                        SupportReportProto.Troops.Builder troopsBuilder = SupportReportProto.Troops.newBuilder();
+                        troopsBuilder.setSp(troops.getSp());
+                        troopsBuilder.setSw(troops.getSw());
+                        troopsBuilder.setAx(troops.getAx());
+                        troopsBuilder.setAr(troops.getAr());
+                        troopsBuilder.setSu(troops.getSu());
+                        troopsBuilder.setLc(troops.getLc());
+                        troopsBuilder.setHc(troops.getHc());
+                        troopsBuilder.setMa(troops.getMa());
+                        troopsBuilder.setRm(troops.getRm());
+                        troopsBuilder.setCt(troops.getCt());
+                        troopsBuilder.setPd(troops.getPd());
+                        playerXSupportTroops.put(player, troopsBuilder);
+                    } else {
+                        troopsBuilderFromMap.setSp(troops.getSp() + troopsBuilderFromMap.getSp());
+                        troopsBuilderFromMap.setSw(troops.getSw() + troopsBuilderFromMap.getSw());
+                        troopsBuilderFromMap.setAx(troops.getAx() + troopsBuilderFromMap.getAx());
+                        troopsBuilderFromMap.setAr(troops.getAr() + troopsBuilderFromMap.getAr());
+                        troopsBuilderFromMap.setSu(troops.getSu() + troopsBuilderFromMap.getSu());
+                        troopsBuilderFromMap.setLc(troops.getLc() + troopsBuilderFromMap.getLc());
+                        troopsBuilderFromMap.setHc(troops.getHc() + troopsBuilderFromMap.getHc());
+                        troopsBuilderFromMap.setMa(troops.getMa() + troopsBuilderFromMap.getMa());
+                        troopsBuilderFromMap.setRm(troops.getRm() + troopsBuilderFromMap.getRm());
+                        troopsBuilderFromMap.setCt(troops.getCt() + troopsBuilderFromMap.getCt());
+                        troopsBuilderFromMap.setPd(troops.getPd() + troopsBuilderFromMap.getPd());
+                    }
+                });
+        return playerXSupportTroops;
+    }
+
+    private Map<String, SupportReportProto.Troops> computeLostSupportTroops(Map<String, SupportReportProto.Troops.Builder> acquired, Map<String, SupportReportProto.Troops.Builder> returned) {
+        Map<String, SupportReportProto.Troops> lostSupportTroops = new HashMap<>();
+        acquired.forEach((player, acquiredTroops) -> {
+            SupportReportProto.Troops.Builder returnedTroops = returned.get(player);
+            SupportReportProto.Troops.Builder troopsBuilder = SupportReportProto.Troops.newBuilder();
+
+            troopsBuilder.setSp(acquiredTroops.getSp() - returnedTroops.getSp());
+            troopsBuilder.setSw(acquiredTroops.getSw() - returnedTroops.getSw());
+            troopsBuilder.setAx(acquiredTroops.getAx() - returnedTroops.getAx());
+            troopsBuilder.setAr(acquiredTroops.getAr() - returnedTroops.getAr());
+            troopsBuilder.setSu(acquiredTroops.getSu() - returnedTroops.getSu());
+            troopsBuilder.setLc(acquiredTroops.getLc() - returnedTroops.getLc());
+            troopsBuilder.setMa(acquiredTroops.getMa() - returnedTroops.getMa());
+            troopsBuilder.setHc(acquiredTroops.getHc() - returnedTroops.getHc());
+            troopsBuilder.setRm(acquiredTroops.getRm() - returnedTroops.getRm());
+            troopsBuilder.setCt(acquiredTroops.getCt() - returnedTroops.getCt());
+            troopsBuilder.setPd(acquiredTroops.getPd() - returnedTroops.getPd());
+
+            lostSupportTroops.put(player, troopsBuilder.build());
+        });
+        return lostSupportTroops;
     }
 
     /*@GetMapping("/triggerAutomation/scavenge")
