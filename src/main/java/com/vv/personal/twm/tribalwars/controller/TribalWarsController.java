@@ -187,6 +187,7 @@ public class TribalWarsController {
                                                              @RequestParam(defaultValue = "9") int worldNumber,
                                                              @RequestParam(defaultValue = "report") String screen,
                                                              @RequestParam(defaultValue = "support") String mode) {
+        //TODO -- for now, this will operate on all the reports under support. Later on, come up with idea to control the reports to be read.
         LOGGER.info("Will start automated analysis of support reports for en{}{}", worldType, worldNumber);
         if (!allEndPointsActive(renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
@@ -201,8 +202,17 @@ public class TribalWarsController {
         String url = String.format(TW_REPORT_SCREEN_MODE, worldType, worldNumber, screen, mode);
         engine.getDriver().loadUrl(url); //loads 1st report page
 
-        List<String> reportLinks = renderServiceFeign.parseTribalWarsSupportReportsPagesLinks(generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource()));
-        LOGGER.info("Report links: {}", reportLinks);
+        HtmlDataParcelProto.Parcel reportParcel = generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource());
+        List<String> allReportLinks = renderServiceFeign.parseTribalWarsSupportReportLinks(reportParcel);
+
+        List<String> reportPagesLinks = renderServiceFeign.parseTribalWarsSupportReportsPagesLinks(reportParcel);
+        LOGGER.info("Report pages links: {}", reportPagesLinks);
+        String twBasePrefix = String.format(TW_URL_WORLD_BASE, worldType, worldNumber);
+        reportPagesLinks.forEach(pageLink -> {
+            engine.getDriver().loadUrl(twBasePrefix + pageLink);
+            allReportLinks.addAll(renderServiceFeign.parseTribalWarsSupportReportLinks(generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource())));
+        });
+        LOGGER.info("All support report links to analyze: {}", allReportLinks);
 
         engine.destroyDriver();
         return "";

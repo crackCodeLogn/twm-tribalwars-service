@@ -32,9 +32,9 @@ public interface RenderServiceFeign extends HealthFeign {
     @PostMapping("/render/tw/parse/page/supportReportPagesLinks")
     List<String> parseTribalWarsSupportReportsPagesLinks(@RequestBody HtmlDataParcelProto.Parcel parcel);
 
-    @PostMapping("/tw/parse/page/supportReports")
+    @PostMapping("/render/tw/parse/page/supportReports")
     List<String> parseTribalWarsSupportReportLinks(@RequestBody HtmlDataParcelProto.Parcel parcel);
 
-    @PostMapping("/tw/parse/report/support")
+    @PostMapping("/render/tw/parse/report/support")
     SupportReportProto.SupportReport parseTribalWarsSupportReport(@RequestBody HtmlDataParcelProto.Parcel parcel);
 }
