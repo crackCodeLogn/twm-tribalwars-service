@@ -3,9 +3,9 @@ package com.vv.personal.twm.tribalwars.controller;
 import com.vv.personal.twm.artifactory.generated.tw.HtmlDataParcelProto;
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
 import com.vv.personal.twm.tribalwars.automation.config.TribalWarsConfiguration;
-import com.vv.personal.twm.tribalwars.automation.constants.Constants;
 import com.vv.personal.twm.tribalwars.automation.engine.Engine;
 import com.vv.personal.twm.tribalwars.config.HealthConfig;
+import com.vv.personal.twm.tribalwars.constants.Constants;
 import com.vv.personal.twm.tribalwars.feign.HealthFeign;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
@@ -16,11 +16,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.vv.personal.twm.tribalwars.automation.constants.Constants.EMPTY_STR;
-import static com.vv.personal.twm.tribalwars.automation.constants.Constants.TW_SCREEN;
+import static com.vv.personal.twm.tribalwars.automation.constants.Constants.*;
 
 /**
  * @author Vivek
@@ -89,7 +90,7 @@ public class TribalWarsController {
                                              @RequestParam(defaultValue = "9") int worldNumber,
                                              @RequestParam(defaultValue = "false") boolean writeBackToMongo) {
         LOGGER.info("Will start automated extraction of troops count for en{}{}", worldType, worldNumber);
-        if (!allEndPointsActive()) {
+        if (!allEndPointsActive(mongoServiceFeign, renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
             return "END-POINTS NOT READY!";
         }
@@ -103,8 +104,8 @@ public class TribalWarsController {
 
         final VillaProto.VillaList.Builder resultantVillaListBuilder = VillaProto.VillaList.newBuilder();
         villaListBuilder.getVillasList().forEach(villa -> {
-            Map<Constants.SCREENS, String> screensStringMap = new HashMap<>();
-            Arrays.stream(Constants.SCREENS.values()).forEach(screen -> {
+            Map<SCREENS_TO_EXTRACT_AUTOMATED_INFO, String> screensStringMap = new HashMap<>();
+            Arrays.stream(SCREENS_TO_EXTRACT_AUTOMATED_INFO.values()).forEach(screen -> {
                 String urlToHit = String.format(TW_SCREEN, worldType, worldNumber, villa.getId(), screen.name().toLowerCase());
                 engine.getDriver().loadUrl(urlToHit);
                 String screenHtml = engine.getDriver().getDriver().getPageSource();
@@ -113,11 +114,11 @@ public class TribalWarsController {
 
             VillaProto.Troops troops = renderServiceFeign.parseTribalWarsScreens(
                     generateParcel(
-                            screensStringMap.get(Constants.SCREENS.WALL),
-                            screensStringMap.get(Constants.SCREENS.TRAIN),
-                            screensStringMap.get(Constants.SCREENS.SNOB)));
+                            screensStringMap.get(SCREENS_TO_EXTRACT_AUTOMATED_INFO.WALL),
+                            screensStringMap.get(SCREENS_TO_EXTRACT_AUTOMATED_INFO.TRAIN),
+                            screensStringMap.get(SCREENS_TO_EXTRACT_AUTOMATED_INFO.SNOB)));
             String farmStrength = renderServiceFeign
-                    .parseTribalWarsFarmScreens(generateParcel(screensStringMap.get(Constants.SCREENS.FARM)))
+                    .parseTribalWarsFarmScreens(generateSingleParcel(Constants.SCREEN_TYPE.FARM, screensStringMap.get(SCREENS_TO_EXTRACT_AUTOMATED_INFO.FARM)))
                     .getFarmStrength();
 
             VillaProto.Villa.Builder filledVilla = VillaProto.Villa.newBuilder()
@@ -181,6 +182,41 @@ public class TribalWarsController {
         return renderedInfo; //returning renderedInfo to swagger as mongo just sends an OK state or not.
     }
 
+    @GetMapping("/triggerAutomation/supportReportsAnalysis")
+    public String triggerAutomationForSupportReportsAnalysis(@RequestParam(defaultValue = "p") String worldType,
+                                                             @RequestParam(defaultValue = "9") int worldNumber,
+                                                             @RequestParam(defaultValue = "report") String screen,
+                                                             @RequestParam(defaultValue = "support") String mode) {
+        LOGGER.info("Will start automated analysis of support reports for en{}{}", worldType, worldNumber);
+        if (!allEndPointsActive(renderServiceFeign)) {
+            LOGGER.error("All end-points not active. Will not trigger op! Check log");
+            return "END-POINTS NOT READY!";
+        }
+        LOGGER.info("All required endpoints active. Initiating run!");
+
+        final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
+        String overviewHtml = engine.extractOverviewDetailsForWorld(); //keeps session open for further op!
+        LOGGER.info("Extracted Overview html from world. Length: {}", overviewHtml.length());
+
+        String url = String.format(TW_REPORT_SCREEN_MODE, worldType, worldNumber, screen, mode);
+        engine.getDriver().loadUrl(url); //loads 1st report page
+
+        List<String> reportLinks = renderServiceFeign.parseTribalWarsSupportReportsPagesLinks(generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource()));
+        LOGGER.info("Report links: {}", reportLinks);
+
+        engine.destroyDriver();
+        return "";
+    }
+
+    /*@GetMapping("/triggerAutomation/scavenge")
+    public String triggerAnalysisScavenging(@RequestParam(defaultValue = "p") String worldType,
+                                            @RequestParam(defaultValue = "9") int worldNumber,
+                                            @RequestParam(defaultValue = "false") boolean writeBackToMongo) {
+        LOGGER.info("Will start automated extraction of scavenging count for en{}{}", worldType, worldNumber);
+
+        return "";
+    }*/
+
     private HtmlDataParcelProto.Parcel generateParcel(String wallHtml, String trainHtml, String snobHtml) {
         return HtmlDataParcelProto.Parcel.newBuilder()
                 .setWallPageSource(wallHtml)
@@ -189,18 +225,31 @@ public class TribalWarsController {
                 .build();
     }
 
-    private HtmlDataParcelProto.Parcel generateParcel(String farmHtml) {
-        return HtmlDataParcelProto.Parcel.newBuilder()
-                .setFarmPageSource(farmHtml)
-                .build();
+    private HtmlDataParcelProto.Parcel generateSingleParcel(Constants.SCREEN_TYPE screenType, String html) {
+        HtmlDataParcelProto.Parcel.Builder builder = HtmlDataParcelProto.Parcel.newBuilder();
+        switch (screenType) {
+            case FARM:
+                builder.setFarmPageSource(html);
+                break;
+            case REPORT:
+                builder.setSupportReportSource(html);
+                break;
+        }
+        return builder.build();
     }
 
-    private boolean allEndPointsActive() {
+    private boolean allEndPointsActive(HealthFeign... healthFeigns) {
         //check for end-points of rendering service and mongo-service
         int retry = 5, sleepTimeoutSeconds = 3;
         while (retry-- > 0) {
             LOGGER.info("Attempting allEndPointsActive test sequence: {}", retry);
-            if (pingResult(createPingTask(mongoServiceFeign)) && pingResult(createPingTask(renderServiceFeign))) return true;
+            AtomicBoolean allPingsPass = new AtomicBoolean(true);
+            for (HealthFeign healthFeign : healthFeigns)
+                if (!pingResult(createPingTask(healthFeign))) {
+                    allPingsPass.set(false);
+                    break;
+                }
+            if (allPingsPass.get()) return true;
             try {
                 Thread.sleep(sleepTimeoutSeconds * 1000);
             } catch (InterruptedException e) {
