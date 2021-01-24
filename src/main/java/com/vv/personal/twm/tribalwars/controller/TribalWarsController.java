@@ -226,6 +226,9 @@ public class TribalWarsController {
                     generateSingleParcel(Constants.SCREEN_TYPE.REPORT, engine.getDriver().getDriver().getPageSource())));
         });
 
+        engine.logoutSequence();
+        engine.destroyDriver();
+
         Map<String, SupportReportProto.Troops.Builder> playerXSupportTroopsAcquired = computePlayerXSupportTroops(SupportReportProto.SupportReportType.ACQUIRED, supportReportList);
         LOGGER.info("Entire acquired player x troops mapping => ");
         playerXSupportTroopsAcquired.forEach((player, troops) -> LOGGER.info("{} x \n{}", player, troops));
@@ -233,9 +236,6 @@ public class TribalWarsController {
         Map<String, SupportReportProto.Troops.Builder> playerXSupportTroopsReturned = computePlayerXSupportTroops(SupportReportProto.SupportReportType.SENT_BACK, supportReportList);
         LOGGER.info("Entire sent back player x troops mapping => ");
         playerXSupportTroopsReturned.forEach((player, troops) -> LOGGER.info("{} x \n{}", player, troops));
-
-        engine.logoutSequence();
-        engine.destroyDriver();
 
         LOGGER.info("Computing the lost support troops now.");
         Map<String, SupportReportProto.Troops> playerXSupportTroopsLost = computeLostSupportTroops(playerXSupportTroopsAcquired, playerXSupportTroopsReturned);
