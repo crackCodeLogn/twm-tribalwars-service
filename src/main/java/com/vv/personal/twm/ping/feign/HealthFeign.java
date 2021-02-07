@@ -1,4 +1,4 @@
-package com.vv.personal.twm.tribalwars.feign;
+package com.vv.personal.twm.ping.feign;
 
 import org.springframework.web.bind.annotation.GetMapping;
 

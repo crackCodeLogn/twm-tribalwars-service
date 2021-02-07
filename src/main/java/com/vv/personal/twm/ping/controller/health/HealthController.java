@@ -1,4 +1,4 @@
-package com.vv.personal.twm.tribalwars.controller;
+package com.vv.personal.twm.ping.controller.health;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
