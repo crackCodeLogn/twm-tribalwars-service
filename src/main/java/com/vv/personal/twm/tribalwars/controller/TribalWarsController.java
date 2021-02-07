@@ -3,11 +3,10 @@ package com.vv.personal.twm.tribalwars.controller;
 import com.vv.personal.twm.artifactory.generated.tw.HtmlDataParcelProto;
 import com.vv.personal.twm.artifactory.generated.tw.SupportReportProto;
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
+import com.vv.personal.twm.ping.processor.Pinger;
 import com.vv.personal.twm.tribalwars.automation.config.TribalWarsConfiguration;
 import com.vv.personal.twm.tribalwars.automation.engine.Engine;
-import com.vv.personal.twm.tribalwars.config.HealthConfig;
 import com.vv.personal.twm.tribalwars.constants.Constants;
-import com.vv.personal.twm.tribalwars.feign.HealthFeign;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
 import org.slf4j.Logger;
@@ -16,8 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.vv.personal.twm.tribalwars.automation.constants.Constants.*;
@@ -40,9 +37,8 @@ public class TribalWarsController {
     @Autowired
     private RenderServiceFeign renderServiceFeign;
 
-    private final ExecutorService pingChecker = Executors.newSingleThreadExecutor();
     @Autowired
-    private HealthConfig healthConfig;
+    private Pinger pinger;
 
     private VillaProto.VillaList freshVillaList = null;
 
@@ -89,7 +85,7 @@ public class TribalWarsController {
                                              @RequestParam(defaultValue = "9") int worldNumber,
                                              @RequestParam(defaultValue = "false") boolean writeBackToMongo) {
         LOGGER.info("Will start automated extraction of troops count for en{}{}", worldType, worldNumber);
-        if (!allEndPointsActive(mongoServiceFeign, renderServiceFeign)) {
+        if (writeBackToMongo && !pinger.allEndPointsActive(mongoServiceFeign, renderServiceFeign) || !pinger.allEndPointsActive(renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
             return "END-POINTS NOT READY!";
         }
@@ -191,7 +187,7 @@ public class TribalWarsController {
                                                              @RequestParam(defaultValue = "2021") int endReportYear) {
         //TODO -- for now, this will operate on all the reports under support. Later on, come up with idea to control the reports to be read.
         LOGGER.info("Will start automated analysis of support reports for en{}{}", worldType, worldNumber);
-        if (!allEndPointsActive(renderServiceFeign)) {
+        if (!pinger.allEndPointsActive(renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
             return "END-POINTS NOT READY!";
         }
@@ -340,40 +336,4 @@ public class TribalWarsController {
         return builder.build();
     }
 
-    private boolean allEndPointsActive(HealthFeign... healthFeigns) {
-        //check for end-points of rendering service and mongo-service
-        int retry = 5, sleepTimeoutSeconds = 3;
-        while (retry-- > 0) {
-            LOGGER.info("Attempting allEndPointsActive test sequence: {}", retry);
-            AtomicBoolean allPingsPass = new AtomicBoolean(true);
-            for (HealthFeign healthFeign : healthFeigns)
-                if (!pingResult(createPingTask(healthFeign))) {
-                    allPingsPass.set(false);
-                    break;
-                }
-            if (allPingsPass.get()) return true;
-            try {
-                Thread.sleep(sleepTimeoutSeconds * 1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-        return false;
-    }
-
-    private Callable<String> createPingTask(HealthFeign healthFeign) {
-        return healthFeign::ping;
-    }
-
-    private boolean pingResult(Callable<String> pingTask) {
-        Future<String> pingResultFuture = pingChecker.submit(pingTask);
-        try {
-            String pingResult = pingResultFuture.get(healthConfig.getPingTimeout(), TimeUnit.SECONDS);
-            LOGGER.info("Obtained '{}' as ping result for {}", pingResult, pingResult);
-            return true;
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            LOGGER.warn("Timed out waiting on ping, task: {}", pingTask);
-        }
-        return false;
-    }
 }

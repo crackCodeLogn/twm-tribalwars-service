@@ -1,6 +1,7 @@
 package com.vv.personal.twm.tribalwars.feign;
 
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
+import com.vv.personal.twm.ping.feign.HealthFeign;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

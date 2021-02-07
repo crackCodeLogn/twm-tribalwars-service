@@ -3,6 +3,7 @@ package com.vv.personal.twm.tribalwars.feign;
 import com.vv.personal.twm.artifactory.generated.tw.HtmlDataParcelProto;
 import com.vv.personal.twm.artifactory.generated.tw.SupportReportProto;
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
+import com.vv.personal.twm.ping.feign.HealthFeign;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

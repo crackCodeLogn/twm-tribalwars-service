@@ -9,6 +9,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.env.Environment;
 import org.springframework.http.converter.protobuf.ProtobufHttpMessageConverter;
@@ -29,6 +30,7 @@ import static com.vv.personal.twm.tribalwars.constants.Constants.*;
  */
 @EnableFeignClients
 @EnableEurekaClient
+@ComponentScan({"com.vv.personal.twm.tribalwars", "com.vv.personal.twm.ping"})
 @SpringBootApplication
 public class TribalWarsServer {
     private static final Logger LOGGER = LoggerFactory.getLogger(TribalWarsServer.class);
@@ -62,6 +64,7 @@ public class TribalWarsServer {
             LOGGER.error("Failed to obtain ip address. ", e);
         }
         String port = environment.getProperty(LOCAL_SPRING_PORT);
-        LOGGER.info("TW Server activation is complete! Exact url: {}", String.format(SWAGGER_UI_URL, host, port));
+        LOGGER.info("'{}' activation is complete! Exact url: {}", environment.getProperty("spring.application.name").toUpperCase(),
+                String.format(SWAGGER_UI_URL, host, port));
     }
 }
