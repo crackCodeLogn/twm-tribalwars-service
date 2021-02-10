@@ -6,8 +6,10 @@ package com.vv.personal.twm.tribalwars.constants;
  */
 public class Constants {
 
+    public static final Integer ZERO_INT = 0;
+
     public enum SCREEN_TYPE {
-        FARM, REPORT
+        FARM, REPORT, SNOB
     }
 
     //FORMATTERS

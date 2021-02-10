@@ -38,4 +38,7 @@ public interface RenderServiceFeign extends HealthFeign {
 
     @PostMapping("/render/tw/parse/report/support")
     SupportReportProto.SupportReport parseTribalWarsSupportReport(@RequestBody HtmlDataParcelProto.Parcel parcel);
+
+    @PostMapping("/render/tw/parse/academy/coinMintingCapacity")
+    VillaProto.Villa parseTribalWarsCoinMintingCapacity(@RequestBody HtmlDataParcelProto.Parcel parcel);
 }

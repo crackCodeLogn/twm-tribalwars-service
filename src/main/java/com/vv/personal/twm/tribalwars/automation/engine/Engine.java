@@ -20,6 +20,7 @@ public class Engine {
     private final String worldType;
     private final int worldNumber;
 
+
     public Engine(AutomationDriver driver, Sso sso, String worldType, int worldNumber) {
         this.driver = driver;
         this.sso = sso;
@@ -70,6 +71,10 @@ public class Engine {
             LOGGER.error("Failed to have a clean log-out. ", e);
         }
         return false;
+    }
+
+    public Object executeJsScript(String script) {
+        return driver.executeJsScript(script);
     }
 
     public void sleeper(double sleepTimeSeconds) {

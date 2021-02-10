@@ -9,15 +9,19 @@ import com.vv.personal.twm.tribalwars.automation.engine.Engine;
 import com.vv.personal.twm.tribalwars.constants.Constants;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static com.vv.personal.twm.tribalwars.automation.constants.Constants.*;
+import static com.vv.personal.twm.tribalwars.constants.Constants.ZERO_INT;
 
 /**
  * @author Vivek
@@ -306,6 +310,74 @@ public class TribalWarsController {
         return lostSupportTroops;
     }
 
+    @GetMapping("/triggerAutomation/mintCoinsForNoblemen")
+    public String triggerAutomationForMintingCoinsForNoblemen(@RequestParam(defaultValue = "p") String worldType,
+                                                              @RequestParam(defaultValue = "9") int worldNumber,
+                                                              @RequestParam(defaultValue = "70") Double resourcesThresholdPercentage,
+                                                              @RequestParam(defaultValue = "60") Double mintingPercentage,
+                                                              @RequestParam(defaultValue = "3") int minCoinsToMint) {
+        //TODO -- for now, this will operate on all the villas. Later on, come up with idea to control the reports to be read.
+        LOGGER.info("Will start automated coin minting for en{}{}", worldType, worldNumber);
+        if (!pinger.allEndPointsActive(renderServiceFeign)) {
+            LOGGER.error("All end-points not active. Will not trigger op! Check log");
+            return "END-POINTS NOT READY!";
+        }
+        LOGGER.info("All required endpoints active. Initiating run!");
+
+        final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
+        String overviewHtml = engine.extractOverviewDetailsForWorld(); //keeps session open for further op!
+        LOGGER.info("Extracted Overview html from world. Length: {}", overviewHtml.length());
+        VillaProto.VillaList villaListBuilder = renderServiceFeign.parseTribalWarsOverviewHtml(overviewHtml);
+        LOGGER.info("{}", villaListBuilder);
+
+        //engine.getDriver().getDriver().manage().window().fullscreen();
+        AtomicInteger coinsMinted = new AtomicInteger(ZERO_INT), plausibleCoinsMintCount = new AtomicInteger(ZERO_INT);
+        villaListBuilder.getVillasList().forEach(villa -> {
+            String urlToHit = String.format(TW_SCREEN, worldType, worldNumber, villa.getId(), SCREENS_TO_EXTRACT_AUTOMATED_INFO.SNOB.name().toLowerCase());
+            engine.getDriver().loadUrl(urlToHit);
+            String snobHtml = engine.getDriver().getDriver().getPageSource();
+
+            VillaProto.Villa populatedVillaDetails = renderServiceFeign.parseTribalWarsCoinMintingCapacity(generateSingleParcel(Constants.SCREEN_TYPE.SNOB, snobHtml));
+            double minResourcesThreshold = resourcesThresholdPercentage * populatedVillaDetails.getResources().getWarehouseCapacity() / 100.0;
+            LOGGER.info("Villa '{}' has a max warehouse cap of '{}' and currently has {} wood, {} clay, {} iron and a farm strength of {}. For coin minting, min resources required: {}", villa.getName(), populatedVillaDetails.getResources().getWarehouseCapacity(),
+                    populatedVillaDetails.getResources().getCurrentWood(), populatedVillaDetails.getResources().getCurrentClay(), populatedVillaDetails.getResources().getCurrentIron(), populatedVillaDetails.getFarmStrength(), minResourcesThreshold);
+
+            if (populatedVillaDetails.getResources().getCurrentWood() >= minResourcesThreshold
+                    && populatedVillaDetails.getResources().getCurrentClay() >= minResourcesThreshold
+                    && populatedVillaDetails.getResources().getCurrentIron() >= minResourcesThreshold) {
+                int coinsToMint = (int) Math.floor(populatedVillaDetails.getCoinMintingCapacity() * mintingPercentage / 100.0);
+                if (coinsToMint >= minCoinsToMint) {
+                    //mint coin here in UI
+                    LOGGER.info("Will mint {} coins in {}", coinsToMint, villa.getName());
+                    plausibleCoinsMintCount.addAndGet(coinsToMint);
+                    try {
+                        engine.executeJsScript("window.scrollBy(0, 1000)");
+
+                        WebElement coinMintField = engine.getDriver().getDriver().findElement(By.id("coin_mint_count"));
+                        coinMintField.clear();
+                        coinMintField.sendKeys(String.valueOf(coinsToMint));
+                        List<WebElement> buttons = engine.getDriver().getDriver().findElements(By.className("btn-default"));
+                        buttons.get(buttons.size() - 1).click();
+                        coinsMinted.addAndGet(coinsToMint);
+                        LOGGER.info("Minting successful!");
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to mint {} coins in {}. ", coinsToMint, villa.getName(), e);
+                    }
+                } else {
+                    LOGGER.warn("Ignoring minting order for current villa '{}', as only {} can be minted, and min coins to be minted is {}", villa.getName(), coinsToMint, minCoinsToMint);
+                }
+            } else {
+                LOGGER.warn("Ignoring minting order for current villa '{}', as current resources is less than min resource threshold '{}'", villa.getName(), minResourcesThreshold);
+            }
+        });
+        engine.logoutSequence();
+        engine.destroyDriver();
+
+        String mintingReport = String.format("%d/%d coins minted!", coinsMinted.get(), plausibleCoinsMintCount.get());
+        LOGGER.info(mintingReport);
+        return mintingReport;
+    }
+
     /*@GetMapping("/triggerAutomation/scavenge")
     public String triggerAnalysisScavenging(@RequestParam(defaultValue = "p") String worldType,
                                             @RequestParam(defaultValue = "9") int worldNumber,
@@ -331,6 +403,9 @@ public class TribalWarsController {
                 break;
             case REPORT:
                 builder.setSupportReportSource(html);
+                break;
+            case SNOB:
+                builder.setSnobPageSource(html);
                 break;
         }
         return builder.build();
