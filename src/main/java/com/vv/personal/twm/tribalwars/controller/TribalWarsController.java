@@ -9,6 +9,7 @@ import com.vv.personal.twm.tribalwars.automation.engine.Engine;
 import com.vv.personal.twm.tribalwars.constants.Constants;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
+import io.swagger.annotations.ApiOperation;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.slf4j.Logger;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static com.vv.personal.twm.tribalwars.automation.constants.Constants.*;
+import static com.vv.personal.twm.tribalwars.constants.Constants.NA_LONG;
 import static com.vv.personal.twm.tribalwars.constants.Constants.ZERO_INT;
 
 /**
@@ -68,20 +70,66 @@ public class TribalWarsController {
         return "FAILED";
     }
 
+    @ApiOperation(value = "read all villas for world from mongo", hidden = true)
     @GetMapping("/read/all")
     public VillaProto.VillaList readAllVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
                                                       @RequestParam(defaultValue = "9") int worldNumber) {
+        if (!pinger.allEndPointsActive(mongoServiceFeign)) {
+            LOGGER.error("All end-points not active. Will not trigger op! Check log");
+            return VillaProto.VillaList.newBuilder().build();
+        }
+        LOGGER.info("All required endpoints active. Initiating run!");
+
         //Strange, somehow this tab doesn't open in swagger. Rest all do though.
         String world = "en" + worldType + worldNumber;
         LOGGER.info("Obtained request to read all villas for world {}", world);
         try {
-            VillaProto.VillaList villaList = mongoServiceFeign.readAllVillasFromMongo(world);
+            VillaProto.VillaList.Builder villaList = VillaProto.VillaList.newBuilder().addAllVillas(mongoServiceFeign.readAllVillasFromMongo(world).getVillasList());
+            villaList.getVillasBuilderList().forEach(this::computeVillaType);
             LOGGER.info("Obtained {} villas for world {} from mongo", villaList.getVillasCount(), world);
-            return villaList;
+            return villaList.build();
         } catch (Exception e) {
             LOGGER.error("Failed to get villas from mongo for world {}", world, e);
         }
         return VillaProto.VillaList.newBuilder().build();
+    }
+
+    @GetMapping("/read/all/manual")
+    public String swaggerReadAllVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
+                                               @RequestParam(defaultValue = "9") int worldNumber) {
+        if (!pinger.allEndPointsActive(renderServiceFeign)) {
+            LOGGER.error("All end-points not active. Will not trigger op! Check log");
+            return "END-POINTS NOT READY!";
+        }
+        LOGGER.info("All required endpoints active. Initiating run!");
+        return renderServiceFeign.renderTribalWarsVillas(readAllVillasForWorld(worldType, worldNumber));
+    }
+
+    @ApiOperation(value = "get all latest villas for world", hidden = true)
+    @GetMapping("/read/all/latest")
+    public VillaProto.VillaList readAllLatestVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
+                                                            @RequestParam(defaultValue = "9") int worldNumber) {
+        VillaProto.VillaList villaList = readAllVillasForWorld(worldType, worldNumber);
+        long latestTimestamp = villaList.getVillasList().stream().mapToLong(VillaProto.Villa::getTimestamp).max().orElse(NA_LONG);
+        LOGGER.info("Computed latest timestamp as: {}", latestTimestamp);
+        VillaProto.VillaList.Builder builder = VillaProto.VillaList.newBuilder()
+                .addAllVillas(villaList.getVillasList().stream()
+                        .filter(villa -> villa.getTimestamp() == latestTimestamp)
+                        .collect(Collectors.toList()));
+        LOGGER.info("Latest timestamped villas: {}", builder.getVillasCount());
+        return builder.build();
+    }
+
+    @GetMapping("/read/all/latest/manual")
+    public String swaggerReadAllLatestVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
+                                                     @RequestParam(defaultValue = "9") int worldNumber) {
+        if (!pinger.allEndPointsActive(renderServiceFeign)) {
+            LOGGER.error("All end-points not active. Will not trigger op! Check log");
+            return "END-POINTS NOT READY!";
+        }
+        LOGGER.info("All required endpoints active. Initiating run!");
+        VillaProto.VillaList villaList = readAllLatestVillasForWorld(worldType, worldNumber);
+        return renderServiceFeign.renderTribalWarsVillas(villaList);
     }
 
     @GetMapping("/triggerAutomation/troops")
@@ -134,27 +182,7 @@ public class TribalWarsController {
         LOGGER.info("Computing type now!");
         final long timestamp = System.currentTimeMillis();
         resultantVillaListBuilder.getVillasBuilderList().forEach(villa -> {
-            //decide and freeze type
-            int sp = villa.getTroops().getSp();
-            int sw = villa.getTroops().getSw();
-            int ax = villa.getTroops().getAx();
-            int ar = villa.getTroops().getAr();
-            int lc = villa.getTroops().getLc();
-
-            int semtex = 0; //1,2 -> 1,2,3
-            if (ax >= 500 && lc >= 250) semtex = 1;
-            if (sp >= 500 || sw >= 500 || ar >= 500) semtex += 2;
-
-            switch (semtex) {
-                case 1:
-                    villa.setType(VillaProto.VillaType.OFF);
-                    break;
-                case 2:
-                    villa.setType(VillaProto.VillaType.DEF);
-                    break;
-                default:
-                    villa.setType(VillaProto.VillaType.MIX);
-            }
+            computeVillaType(villa); //decide and freeze type
             villa.setTimestamp(timestamp); //setting time of edit
         });
         VillaProto.VillaList finalVillaList = resultantVillaListBuilder.build();
@@ -243,6 +271,29 @@ public class TribalWarsController {
         playerXSupportTroopsLost.forEach((player, troops) -> LOGGER.info("{} x \n{}", player, troops));
 
         return playerXSupportTroopsLost.toString();
+    }
+
+    private void computeVillaType(VillaProto.Villa.Builder villa) {
+        int sp = villa.getTroops().getSp();
+        int sw = villa.getTroops().getSw();
+        int ax = villa.getTroops().getAx();
+        int ar = villa.getTroops().getAr();
+        int lc = villa.getTroops().getLc();
+
+        int semtex = 0; //1,2 -> 1,2,3
+        if (ax >= 500 && lc >= 250) semtex = 1;
+        if (sp >= 500 || sw >= 500 || ar >= 500) semtex += 2;
+
+        switch (semtex) {
+            case 1:
+                villa.setType(VillaProto.VillaType.OFF);
+                break;
+            case 2:
+                villa.setType(VillaProto.VillaType.DEF);
+                break;
+            default:
+                villa.setType(VillaProto.VillaType.MIX);
+        }
     }
 
     private Map<String, SupportReportProto.Troops.Builder> computePlayerXSupportTroops(SupportReportProto.SupportReportType supportReportType, List<SupportReportProto.SupportReport> supportReportList) {

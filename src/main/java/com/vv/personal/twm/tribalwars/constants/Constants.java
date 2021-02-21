@@ -7,6 +7,7 @@ package com.vv.personal.twm.tribalwars.constants;
 public class Constants {
 
     public static final Integer ZERO_INT = 0;
+    public static final Long NA_LONG = -1L;
 
     public enum SCREEN_TYPE {
         FARM, REPORT, SNOB
