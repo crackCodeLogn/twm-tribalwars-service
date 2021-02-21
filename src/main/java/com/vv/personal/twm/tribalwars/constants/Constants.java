@@ -13,6 +13,9 @@ public class Constants {
         FARM, REPORT, SNOB
     }
 
+    public static final String DISTANCE_WITH_COMPARING_VILLA_KEY = "comp-dist";
+    public static final String COMPARING_VILLA_COORD = "comp-loc";
+
     //FORMATTERS
     public static final String HEROKU_SWAGGER_UI_URL = "https://%s/swagger-ui/index.html";
     public static final String SWAGGER_UI_URL = "http://%s:%s/swagger-ui/index.html";
