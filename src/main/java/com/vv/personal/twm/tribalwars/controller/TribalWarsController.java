@@ -11,6 +11,7 @@ import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
 import com.vv.personal.twm.tribalwars.util.TwUtil;
 import io.swagger.annotations.ApiOperation;
+import org.apache.commons.lang3.StringUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.slf4j.Logger;
@@ -349,13 +350,13 @@ public class TribalWarsController {
                                                      @RequestParam(defaultValue = "OFF") VillaProto.VillaType villaType,
                                                      @RequestParam(defaultValue = "xxx|yyy") String destinationCoordinate,
                                                      @RequestParam(defaultValue = "5") int depth) {
-        if (!destinationCoordinate.matches("[0-9]{3}\\|[0-9]{3}")) {
+        if (!isCoordinateValid(destinationCoordinate)) {
             String err = "Unrecognized destination coordinates: " + destinationCoordinate;
             LOGGER.warn(err);
             return err;
         }
-        String[] parts = destinationCoordinate.split("\\|");
-        int x = Integer.parseInt(parts[0]), y = Integer.parseInt(parts[1]);
+        String[] parts = StringUtils.split(destinationCoordinate, '|');
+        int destX = Integer.parseInt(parts[0]), destY = Integer.parseInt(parts[1]);
         LOGGER.info("Will start computation of nearest villas of mine to {} for type: {}", destinationCoordinate, villaType);
         if (!pinger.allEndPointsActive(renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
@@ -367,7 +368,7 @@ public class TribalWarsController {
                         .stream().filter(villa -> villa.getType() == villaType).collect(Collectors.toList()));
         LOGGER.info("Found {} villas of mine matching type: {}", villaList.getVillasCount(), villaType);
         villaList.getVillasBuilderList().forEach(villa -> {
-            villa.putExtraDoubles(DISTANCE_WITH_COMPARING_VILLA_KEY, Double.parseDouble(String.format("%.2f", TwUtil.computeDistance(villa.getX(), villa.getY(), x, y))));
+            villa.putExtraDoubles(DISTANCE_WITH_COMPARING_VILLA_KEY, Double.parseDouble(String.format("%.2f", TwUtil.computeDistance(villa.getX(), villa.getY(), destX, destY))));
             villa.putExtraStrings(COMPARING_VILLA_COORD, destinationCoordinate);
         });
 

@@ -13,6 +13,10 @@ import java.util.Map;
  */
 public class TwUtil {
 
+    public static boolean isCoordinateValid(String coordinate) {
+        return coordinate.matches("[0-9]{3}\\|[0-9]{3}");
+    }
+
     public static double computeDistance(int srcX, int srcY, int destX, int destY) {
         return Math.sqrt(Math.pow(srcX - destX, 2) + Math.pow(srcY - destY, 2));
     }
