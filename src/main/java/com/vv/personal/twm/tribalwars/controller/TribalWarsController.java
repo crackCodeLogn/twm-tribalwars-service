@@ -351,7 +351,7 @@ public class TribalWarsController {
                                                      @RequestParam(defaultValue = "5") int depth) {
         if (!destinationCoordinate.matches("[0-9]{3}\\|[0-9]{3}")) {
             String err = "Unrecognized destination coordinates: " + destinationCoordinate;
-            LOGGER.error(err);
+            LOGGER.warn(err);
             return err;
         }
         String[] parts = destinationCoordinate.split("\\|");
