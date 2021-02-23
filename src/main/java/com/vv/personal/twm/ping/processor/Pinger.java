@@ -48,6 +48,7 @@ public class Pinger {
     }
 
     private Callable<String> createPingTask(HealthFeign healthFeign) {
+        LOGGER.info("Creating ping task for {}", healthFeign);
         return healthFeign::ping;
     }
 
