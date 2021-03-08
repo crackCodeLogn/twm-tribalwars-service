@@ -343,6 +343,43 @@ public class TribalWarsController {
         return mintingReport;
     }
 
+    @GetMapping("/triggerAutomation/removeFlagFromAllVillas")
+    public String triggerAutomationForRemovingAllFlags(@RequestParam(defaultValue = "p") String worldType,
+                                                       @RequestParam(defaultValue = "9") int worldNumber) {
+        LOGGER.info("Will start automated flag removal for en{}{}", worldType, worldNumber);
+        if (!pinger.allEndPointsActive(renderServiceFeign)) {
+            LOGGER.error("All end-points not active. Will not trigger op! Check log");
+            return "END-POINTS NOT READY!";
+        }
+        LOGGER.info("All required endpoints active. Initiating run!");
+
+        final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
+        String overviewHtml = engine.extractOverviewDetailsForWorld(); //keeps session open for further op!
+        LOGGER.info("Extracted Overview html from world. Length: {}", overviewHtml.length());
+        VillaProto.VillaList villaListBuilder = renderServiceFeign.parseTribalWarsOverviewHtml(overviewHtml);
+        LOGGER.info("{}", villaListBuilder);
+
+        String REMOVE_FLAG_CMD = "FlagsScreen.unassignFlag(%s); return false";
+        AtomicInteger flagsRemoved = new AtomicInteger(0);
+        for (VillaProto.Villa villa : villaListBuilder.getVillasList()) {
+            String urlToHit = String.format(TW_SCREEN, worldType, worldNumber, villa.getId(), "flags");
+            engine.getDriver().loadUrl(urlToHit);
+
+            try {
+                Object jsOutput = engine.executeJsScript(String.format(REMOVE_FLAG_CMD, villa.getId()));
+                LOGGER.info("Obtained js-output for villa: {} => {}", villa.getId(), jsOutput);
+                flagsRemoved.incrementAndGet();
+            } catch (Exception e) {
+                LOGGER.warn("Failed to remove flag for villa: {}. ", villa.getId(), e);
+            }
+        }
+        engine.logoutSequence();
+        engine.destroyDriver();
+
+        LOGGER.info(String.valueOf(flagsRemoved.get()));
+        return String.valueOf(flagsRemoved.get());
+    }
+
 
     @GetMapping("/triggerComputation/computeLeastDistance")
     public String triggerComputationForLeastDistance(@RequestParam(defaultValue = "p") String worldType,
