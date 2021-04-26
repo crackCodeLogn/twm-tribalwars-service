@@ -90,22 +90,24 @@ public class TwUtil {
     public static Map<String, SupportReportProto.Troops> computeLostSupportTroops(Map<String, SupportReportProto.Troops.Builder> acquired, Map<String, SupportReportProto.Troops.Builder> returned) {
         Map<String, SupportReportProto.Troops> lostSupportTroops = new HashMap<>();
         acquired.forEach((player, acquiredTroops) -> {
-            SupportReportProto.Troops.Builder returnedTroops = returned.get(player);
-            SupportReportProto.Troops.Builder troopsBuilder = SupportReportProto.Troops.newBuilder();
+            if (!player.isEmpty()) {
+                SupportReportProto.Troops.Builder returnedTroops = returned.get(player);
+                SupportReportProto.Troops.Builder troopsBuilder = SupportReportProto.Troops.newBuilder();
 
-            troopsBuilder.setSp(acquiredTroops.getSp() - returnedTroops.getSp());
-            troopsBuilder.setSw(acquiredTroops.getSw() - returnedTroops.getSw());
-            troopsBuilder.setAx(acquiredTroops.getAx() - returnedTroops.getAx());
-            troopsBuilder.setAr(acquiredTroops.getAr() - returnedTroops.getAr());
-            troopsBuilder.setSu(acquiredTroops.getSu() - returnedTroops.getSu());
-            troopsBuilder.setLc(acquiredTroops.getLc() - returnedTroops.getLc());
-            troopsBuilder.setMa(acquiredTroops.getMa() - returnedTroops.getMa());
-            troopsBuilder.setHc(acquiredTroops.getHc() - returnedTroops.getHc());
-            troopsBuilder.setRm(acquiredTroops.getRm() - returnedTroops.getRm());
-            troopsBuilder.setCt(acquiredTroops.getCt() - returnedTroops.getCt());
-            troopsBuilder.setPd(acquiredTroops.getPd() - returnedTroops.getPd());
+                troopsBuilder.setSp(acquiredTroops.getSp() - returnedTroops.getSp());
+                troopsBuilder.setSw(acquiredTroops.getSw() - returnedTroops.getSw());
+                troopsBuilder.setAx(acquiredTroops.getAx() - returnedTroops.getAx());
+                troopsBuilder.setAr(acquiredTroops.getAr() - returnedTroops.getAr());
+                troopsBuilder.setSu(acquiredTroops.getSu() - returnedTroops.getSu());
+                troopsBuilder.setLc(acquiredTroops.getLc() - returnedTroops.getLc());
+                troopsBuilder.setMa(acquiredTroops.getMa() - returnedTroops.getMa());
+                troopsBuilder.setHc(acquiredTroops.getHc() - returnedTroops.getHc());
+                troopsBuilder.setRm(acquiredTroops.getRm() - returnedTroops.getRm());
+                troopsBuilder.setCt(acquiredTroops.getCt() - returnedTroops.getCt());
+                troopsBuilder.setPd(acquiredTroops.getPd() - returnedTroops.getPd());
 
-            lostSupportTroops.put(player, troopsBuilder.build());
+                lostSupportTroops.put(player, troopsBuilder.build());
+            }
         });
         return lostSupportTroops;
     }
