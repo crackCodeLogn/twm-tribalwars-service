@@ -90,7 +90,7 @@ public class TwUtil {
     public static Map<String, SupportReportProto.Troops> computeLostSupportTroops(Map<String, SupportReportProto.Troops.Builder> acquired, Map<String, SupportReportProto.Troops.Builder> returned) {
         Map<String, SupportReportProto.Troops> lostSupportTroops = new HashMap<>();
         acquired.forEach((player, acquiredTroops) -> {
-            if (!player.isEmpty()) {
+            if (!player.isEmpty() && returned.get(player) != null) {
                 SupportReportProto.Troops.Builder returnedTroops = returned.get(player);
                 SupportReportProto.Troops.Builder troopsBuilder = SupportReportProto.Troops.newBuilder();
 
