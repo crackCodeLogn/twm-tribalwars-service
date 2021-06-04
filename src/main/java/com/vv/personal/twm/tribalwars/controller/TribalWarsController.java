@@ -347,7 +347,7 @@ public class TribalWarsController {
         return mintingReport;
     }
 
-    public static List<MarketOrder> generateMarketOrders(VillaProto.Villa populatedVillaDetails) {
+    public static List<MarketOrder> generateMarketOrders(VillaProto.Villa populatedVillaDetails, int maxAvailableMerchants) {
         ResourceForMarket resourceForMarket = new ResourceForMarket(populatedVillaDetails.getResources());
         InternalGrouping0 maxResource = resourceForMarket.getResources().last();
         InternalGrouping0 leastResource = resourceForMarket.getResources().pollFirst();
@@ -358,8 +358,8 @@ public class TribalWarsController {
         double delta1 = Math.abs(meanResources - leastResource.getVal());
         double delta2 = Math.abs(meanResources - middleResource.getVal());
         double totalDelta = delta1 + delta2;
-        int orders1 = (int) Math.ceil((delta1 / totalDelta) * populatedVillaDetails.getAvailableMerchants());
-        int orders2 = populatedVillaDetails.getAvailableMerchants() - orders1;
+        int orders1 = (int) Math.ceil((delta1 / totalDelta) * maxAvailableMerchants);
+        int orders2 = maxAvailableMerchants - orders1;
 
         //packaging orders in list to place
         MarketOrder marketOrder1 = new MarketOrder(maxResource.getRes(), leastResource.getRes(), orders1, leastResource.getVal());
@@ -494,7 +494,8 @@ public class TribalWarsController {
             String marketHtml = engine.getDriver().getDriver().getPageSource();
 
             VillaProto.Villa populatedVillaDetails = renderServiceFeign.parseTribalWarsMarketDetails(generateSingleParcel(SCREEN_TYPE.MARKET, marketHtml));
-            List<MarketOrder> marketOrders = generateMarketOrders(populatedVillaDetails);
+            int maxAvailableMerchants = villa.getAvailableMerchants() % 100; //to not allow trading of more than 1L res
+            List<MarketOrder> marketOrders = generateMarketOrders(populatedVillaDetails, maxAvailableMerchants);
             marketOrders.forEach(marketOrder -> {
                 try {
                     Thread.sleep(201); //sleeping for allowing market order placement post page refresh

@@ -27,7 +27,7 @@ public class TribalWarsControllerTest {
                 .setWarehouseCapacity(400000)
                 .build());
 
-        List<TribalWarsController.MarketOrder> marketOrders = TribalWarsController.generateMarketOrders(villa.build());
+        List<TribalWarsController.MarketOrder> marketOrders = TribalWarsController.generateMarketOrders(villa.build(), 46);
         System.out.println(marketOrders);
         assertEquals(25, marketOrders.get(0).getOrdersToPlace());
         assertEquals("res_sell_stone", marketOrders.get(0).getRes_sell_id());
