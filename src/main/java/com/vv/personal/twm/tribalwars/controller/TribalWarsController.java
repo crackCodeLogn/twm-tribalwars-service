@@ -1,5 +1,6 @@
 package com.vv.personal.twm.tribalwars.controller;
 
+import com.google.common.collect.Lists;
 import com.vv.personal.twm.artifactory.generated.tw.HtmlDataParcelProto;
 import com.vv.personal.twm.artifactory.generated.tw.SupportReportProto;
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
@@ -12,6 +13,8 @@ import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
 import com.vv.personal.twm.tribalwars.util.TwUtil;
 import io.swagger.annotations.ApiOperation;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.slf4j.Logger;
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static com.vv.personal.twm.tribalwars.automation.constants.Constants.*;
@@ -343,6 +347,38 @@ public class TribalWarsController {
         return mintingReport;
     }
 
+    public static List<MarketOrder> generateMarketOrders(VillaProto.Villa populatedVillaDetails) {
+        ResourceForMarket resourceForMarket = new ResourceForMarket(populatedVillaDetails.getResources());
+        InternalGrouping0 maxResource = resourceForMarket.getResources().last();
+        InternalGrouping0 leastResource = resourceForMarket.getResources().pollFirst();
+        InternalGrouping0 middleResource = resourceForMarket.getResources().pollFirst();
+
+        //Algo for compute of orders distribution
+        double meanResources = (maxResource.getVal() + leastResource.getVal() + middleResource.getVal()) / 3.0;
+        double delta1 = Math.abs(meanResources - leastResource.getVal());
+        double delta2 = Math.abs(meanResources - middleResource.getVal());
+        double totalDelta = delta1 + delta2;
+        int orders1 = (int) Math.ceil((delta1 / totalDelta) * populatedVillaDetails.getAvailableMerchants());
+        int orders2 = populatedVillaDetails.getAvailableMerchants() - orders1;
+
+        //packaging orders in list to place
+        MarketOrder marketOrder1 = new MarketOrder(maxResource.getRes(), leastResource.getRes(), orders1, leastResource.getVal());
+        MarketOrder marketOrder2 = new MarketOrder(maxResource.getRes(), middleResource.getRes(), orders2, middleResource.getVal());
+        List<MarketOrder> marketOrders = Lists.newArrayList(marketOrder1, marketOrder2);
+
+        //predicates to filter out orders on basis of conditions
+        double maxWarehouseThreshold = populatedVillaDetails.getResources().getWarehouseCapacity() * .90;
+        Predicate<MarketOrder> allowOrdersOnlyIfWithinWarehouseThreshold = order -> (order.getOrdersToPlace() * 1000L + order.getRes_buy_current_val() < maxWarehouseThreshold);
+
+        return marketOrders.stream()
+                .filter(allowOrdersOnlyIfWithinWarehouseThreshold)
+                .collect(Collectors.toList());
+    }
+
+    private static InternalGrouping0 generateInternalGrouping(Character resource, Long value) {
+        return new InternalGrouping0(resource, value);
+    }
+
     @GetMapping("/triggerAutomation/removeFlagFromAllVillas")
     public String triggerAutomationForRemovingAllFlags(@RequestParam(defaultValue = "p") String worldType,
                                                        @RequestParam(defaultValue = "9") int worldNumber) {
@@ -435,6 +471,60 @@ public class TribalWarsController {
                 .build();
     }
 
+    @GetMapping("/triggerAutomation/engine/pricing/placeMarketOrders")
+    public String pricingEngineForPlacingMarketOrders(@RequestParam(defaultValue = "p") String worldType,
+                                                      @RequestParam(defaultValue = "9") int worldNumber) {
+        LOGGER.info("Will start automated market order placement for en{}{}", worldType, worldNumber);
+        if (!pinger.allEndPointsActive(renderServiceFeign)) {
+            LOGGER.error("All end-points not active. Will not trigger op! Check log");
+            return "END-POINTS NOT READY!";
+        }
+        LOGGER.info("All required endpoints active. Initiating run!");
+
+        final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
+        String overviewHtml = engine.extractOverviewDetailsForWorld(); //keeps session open for further op!
+        LOGGER.info("Extracted Overview html from world. Length: {}", overviewHtml.length());
+        VillaProto.VillaList villaListBuilder = renderServiceFeign.parseTribalWarsOverviewHtml(overviewHtml);
+        LOGGER.info("{}", villaListBuilder);
+
+        AtomicInteger marketOrdersPlaced = new AtomicInteger(0);
+        for (VillaProto.Villa villa : villaListBuilder.getVillasList()) {
+            String urlToHit = String.format(TW_SCREEN, worldType, worldNumber, villa.getId(), SCREEN_TYPE.MARKET.name().toLowerCase() + "&mode=own_offer");
+            engine.getDriver().loadUrl(urlToHit);
+            String marketHtml = engine.getDriver().getDriver().getPageSource();
+
+            VillaProto.Villa populatedVillaDetails = renderServiceFeign.parseTribalWarsMarketDetails(generateSingleParcel(SCREEN_TYPE.MARKET, marketHtml));
+            List<MarketOrder> marketOrders = generateMarketOrders(populatedVillaDetails);
+            marketOrders.forEach(marketOrder -> {
+                try {
+                    Thread.sleep(201); //sleeping for allowing market order placement post page refresh
+                } catch (InterruptedException ignored) {
+                }
+                WebElement sellAmt = engine.getDriver().getDriver().findElement(By.id("res_sell_amount"));
+                sellAmt.sendKeys(String.valueOf(marketOrder.getSell_units()));
+                WebElement sellRes = engine.getDriver().getDriver().findElement(By.id(marketOrder.getRes_sell_id()));
+                sellRes.click();
+
+                WebElement buyAmt = engine.getDriver().getDriver().findElement(By.id("res_buy_amount"));
+                buyAmt.sendKeys(String.valueOf(marketOrder.getBuy_units()));
+                WebElement buyRes = engine.getDriver().getDriver().findElement(By.id(marketOrder.getRes_buy_id()));
+                buyRes.click();
+
+                WebElement offers = engine.getDriver().getDriver().findElement(By.name("multi"));
+                offers.clear();
+                offers.sendKeys(String.valueOf(marketOrder.getOrdersToPlace()));
+
+                WebElement submit = engine.getDriver().getDriver().findElement(By.id("submit_offer"));
+                submit.click();
+                LOGGER.info("Placed market order => [{}]", marketOrder);
+                marketOrdersPlaced.incrementAndGet();
+            });
+        }
+        engine.logoutSequence();
+        engine.destroyDriver();
+        return String.format("Placed %s market orders!", marketOrdersPlaced.get());
+    }
+
     private HtmlDataParcelProto.Parcel generateSingleParcel(Constants.SCREEN_TYPE screenType, String html) {
         HtmlDataParcelProto.Parcel.Builder builder = HtmlDataParcelProto.Parcel.newBuilder();
         switch (screenType) {
@@ -447,8 +537,111 @@ public class TribalWarsController {
             case SNOB:
                 builder.setSnobPageSource(html);
                 break;
+            case MARKET:
+                builder.setMarketPageSource(html);
+                break;
         }
         return builder.build();
     }
 
+    public static class MarketOrder {
+        private final String res_sell_id;
+        private final int sell_units = 1000;
+        private final String res_buy_id;
+        private final int buy_units = 1000;
+        private final int ordersToPlace;
+        private final long res_buy_current_val;
+
+        public MarketOrder(char sell_res, char buy_res, int ordersToPlace, long res_buy_current_val) {
+            this.res_sell_id = String.format("res_sell_%s", characterToResourceMap.get(sell_res));
+            this.res_buy_id = String.format("res_buy_%s", characterToResourceMap.get(buy_res));
+            this.ordersToPlace = ordersToPlace;
+            this.res_buy_current_val = res_buy_current_val;
+        }
+
+        @Override
+        public String toString() {
+            return new ToStringBuilder(this, ToStringStyle.JSON_STYLE)
+                    .append("res_sell_id", res_sell_id)
+                    .append("sell_units", sell_units)
+                    .append("res_buy_id", res_buy_id)
+                    .append("buy_units", buy_units)
+                    .append("ordersToPlace", ordersToPlace)
+                    .toString();
+        }
+
+        public String getRes_sell_id() {
+            return res_sell_id;
+        }
+
+        public int getSell_units() {
+            return sell_units;
+        }
+
+        public String getRes_buy_id() {
+            return res_buy_id;
+        }
+
+        public int getBuy_units() {
+            return buy_units;
+        }
+
+        public int getOrdersToPlace() {
+            return ordersToPlace;
+        }
+
+        public long getRes_buy_current_val() {
+            return res_buy_current_val;
+        }
+    }
+
+    private static class ResourceForMarket {
+        private final TreeSet<InternalGrouping0> resources = new TreeSet<>(Comparator.comparingDouble(InternalGrouping0::getVal));
+
+        public ResourceForMarket(VillaProto.Resources resource) {
+            resources.add(generateInternalGrouping('w', resource.getCurrentWood() / 1000));
+            resources.add(generateInternalGrouping('c', resource.getCurrentClay() / 1000));
+            resources.add(generateInternalGrouping('i', resource.getCurrentIron() / 1000));
+        }
+
+        public TreeSet<InternalGrouping0> getResources() {
+            return resources;
+        }
+    }
+
+    private static class InternalGrouping0 {
+        private final Character res;
+        private final Long val;
+
+        public InternalGrouping0(Character res, Long val) {
+            this.res = res;
+            this.val = val;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            InternalGrouping0 that = (InternalGrouping0) o;
+
+            if (getRes() != null ? !getRes().equals(that.getRes()) : that.getRes() != null) return false;
+            return getVal() != null ? getVal().equals(that.getVal()) : that.getVal() == null;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = getRes() != null ? getRes().hashCode() : 0;
+            result = 31 * result + (getVal() != null ? getVal().hashCode() : 0);
+            return result;
+        }
+
+        public Character getRes() {
+            return res;
+        }
+
+        public Long getVal() {
+            return val;
+        }
+    }
 }

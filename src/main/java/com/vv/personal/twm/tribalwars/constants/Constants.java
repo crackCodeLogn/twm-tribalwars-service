@@ -10,7 +10,7 @@ public class Constants {
     public static final Long NA_LONG = -1L;
 
     public enum SCREEN_TYPE {
-        FARM, REPORT, SNOB
+        FARM, REPORT, SNOB, MARKET
     }
 
     public static final String DISTANCE_WITH_COMPARING_VILLA_KEY = "comp-dist";

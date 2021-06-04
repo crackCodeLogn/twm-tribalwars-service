@@ -1,5 +1,6 @@
 package com.vv.personal.twm.tribalwars.util;
 
+import com.google.common.collect.ImmutableMap;
 import com.vv.personal.twm.artifactory.generated.tw.SupportReportProto;
 import com.vv.personal.twm.artifactory.generated.tw.VillaProto;
 
@@ -111,4 +112,11 @@ public class TwUtil {
         });
         return lostSupportTroops;
     }
+
+    public static Map<Character, String> characterToResourceMap = ImmutableMap.<Character, String>builder()
+            .put('i', "iron")
+            .put('c', "stone")
+            .put('w', "wood")
+            .build();
+
 }
