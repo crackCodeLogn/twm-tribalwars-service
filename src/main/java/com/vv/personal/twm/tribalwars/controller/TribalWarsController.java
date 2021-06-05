@@ -353,25 +353,38 @@ public class TribalWarsController {
         InternalGrouping0 leastResource = resourceForMarket.getResources().pollFirst();
         InternalGrouping0 middleResource = resourceForMarket.getResources().pollFirst();
 
+        MarketOrder marketOrder1, marketOrder2;
         //Algo for compute of orders distribution
-        double meanResources = (maxResource.getVal() + leastResource.getVal() + middleResource.getVal()) / 3.0;
-        double delta1 = Math.abs(meanResources - leastResource.getVal());
-        double delta2 = Math.abs(meanResources - middleResource.getVal());
-        double totalDelta = delta1 + delta2;
-        int orders1 = (int) Math.ceil((delta1 / totalDelta) * maxAvailableMerchants);
-        int orders2 = maxAvailableMerchants - orders1;
 
-        //packaging orders in list to place
-        MarketOrder marketOrder1 = new MarketOrder(maxResource.getRes(), leastResource.getRes(), orders1, leastResource.getVal());
-        MarketOrder marketOrder2 = new MarketOrder(maxResource.getRes(), middleResource.getRes(), orders2, middleResource.getVal());
+        double meanResources = (maxResource.getVal() + leastResource.getVal() + middleResource.getVal()) / 3.0;
+        double diffMiddleAndMean = meanResources - middleResource.getVal();
+        double spreadToDivide = maxResource.getVal() - meanResources;
+        double deltaL = meanResources - leastResource.getVal();
+        double deltaM = meanResources - middleResource.getVal();
+        double deltaTotal = deltaL + Math.abs(deltaM);
+        if (Math.ceil(spreadToDivide) > maxAvailableMerchants) {
+            spreadToDivide = maxAvailableMerchants;
+        }
+        spreadToDivide *= 1.10; //skewing inwards
+        int ordersL = (int) Math.ceil((deltaL / deltaTotal) * spreadToDivide);
+        int ordersM = Math.min((int) Math.ceil((Math.abs(deltaM) / deltaTotal) * spreadToDivide), maxAvailableMerchants - ordersL);
+
+        marketOrder1 = new MarketOrder(maxResource.getRes(), leastResource.getRes(), ordersL, leastResource.getVal(), deltaL);
+        if (diffMiddleAndMean > 0) { // mean is higher than lower and middle
+            marketOrder2 = new MarketOrder(maxResource.getRes(), middleResource.getRes(), ordersM, middleResource.getVal(), deltaM);
+        } else {
+            marketOrder2 = new MarketOrder(middleResource.getRes(), leastResource.getRes(), ordersM, leastResource.getVal(), deltaM);
+        }
         List<MarketOrder> marketOrders = Lists.newArrayList(marketOrder1, marketOrder2);
 
         //predicates to filter out orders on basis of conditions
         double maxWarehouseThreshold = populatedVillaDetails.getResources().getWarehouseCapacity() * .90;
-        Predicate<MarketOrder> allowOrdersOnlyIfWithinWarehouseThreshold = order -> (order.getOrdersToPlace() * 1000L + order.getRes_buy_current_val() < maxWarehouseThreshold);
+        Predicate<MarketOrder> allowIffWithinWarehouseThreshold = order -> (order.getOrdersToPlace() * 1000L + order.getRes_buy_current_val() < maxWarehouseThreshold);
+        Predicate<MarketOrder> allowIffDeltaPositive = order -> order.getDeltaWithMean() > 0;
 
         return marketOrders.stream()
-                .filter(allowOrdersOnlyIfWithinWarehouseThreshold)
+                .filter(allowIffWithinWarehouseThreshold)
+                .filter(allowIffDeltaPositive)
                 .collect(Collectors.toList());
     }
 
@@ -473,7 +486,8 @@ public class TribalWarsController {
 
     @GetMapping("/triggerAutomation/engine/pricing/placeMarketOrders")
     public String pricingEngineForPlacingMarketOrders(@RequestParam(defaultValue = "p") String worldType,
-                                                      @RequestParam(defaultValue = "9") int worldNumber) {
+                                                      @RequestParam(defaultValue = "9") int worldNumber,
+                                                      @RequestParam(defaultValue = "100") int maxMerchantsToUtilize) {
         LOGGER.info("Will start automated market order placement for en{}{}", worldType, worldNumber);
         if (!pinger.allEndPointsActive(renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
@@ -494,7 +508,7 @@ public class TribalWarsController {
             String marketHtml = engine.getDriver().getDriver().getPageSource();
 
             VillaProto.Villa populatedVillaDetails = renderServiceFeign.parseTribalWarsMarketDetails(generateSingleParcel(SCREEN_TYPE.MARKET, marketHtml));
-            int maxAvailableMerchants = Math.min(villa.getAvailableMerchants(), 100); //to not allow trading of more than 1L res
+            int maxAvailableMerchants = Math.min(villa.getAvailableMerchants(), maxMerchantsToUtilize); //to not allow trading of more than 1L res
             List<MarketOrder> marketOrders = generateMarketOrders(populatedVillaDetails, maxAvailableMerchants);
             marketOrders.forEach(marketOrder -> {
                 try {
@@ -552,12 +566,14 @@ public class TribalWarsController {
         private final int buy_units = 1000;
         private final int ordersToPlace;
         private final long res_buy_current_val;
+        private final double deltaWithMean;
 
-        public MarketOrder(char sell_res, char buy_res, int ordersToPlace, long res_buy_current_val) {
+        public MarketOrder(char sell_res, char buy_res, int ordersToPlace, long res_buy_current_val, double deltaWithMean) {
             this.res_sell_id = String.format("res_sell_%s", characterToResourceMap.get(sell_res));
             this.res_buy_id = String.format("res_buy_%s", characterToResourceMap.get(buy_res));
             this.ordersToPlace = ordersToPlace;
             this.res_buy_current_val = res_buy_current_val;
+            this.deltaWithMean = Math.abs(deltaWithMean);
         }
 
         @Override
@@ -593,6 +609,10 @@ public class TribalWarsController {
 
         public long getRes_buy_current_val() {
             return res_buy_current_val;
+        }
+
+        public double getDeltaWithMean() {
+            return deltaWithMean;
         }
     }
 
