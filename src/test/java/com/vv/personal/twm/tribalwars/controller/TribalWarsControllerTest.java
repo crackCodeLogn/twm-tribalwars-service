@@ -30,10 +30,10 @@ public class TribalWarsControllerTest {
         List<TribalWarsController.MarketOrder> marketOrders = TribalWarsController.generateMarketOrders(villa.build(), 46);
         System.out.println(marketOrders);
         assertEquals(2, marketOrders.size());
-        assertEquals(28, marketOrders.get(0).getOrdersToPlace());
+        assertEquals(25, marketOrders.get(0).getOrdersToPlace());
         assertEquals("res_sell_stone", marketOrders.get(0).getRes_sell_id());
         assertEquals("res_buy_wood", marketOrders.get(0).getRes_buy_id());
-        assertEquals(18, marketOrders.get(1).getOrdersToPlace());
+        assertEquals(21, marketOrders.get(1).getOrdersToPlace());
         assertEquals("res_buy_iron", marketOrders.get(1).getRes_buy_id());
     }
 
