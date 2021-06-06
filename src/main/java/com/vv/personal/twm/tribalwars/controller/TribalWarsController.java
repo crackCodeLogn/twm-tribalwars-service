@@ -362,10 +362,10 @@ public class TribalWarsController {
         double deltaL = meanResources - leastResource.getVal();
         double deltaM = meanResources - middleResource.getVal();
         double deltaTotal = deltaL + Math.abs(deltaM);
+        spreadToDivide *= 1.10; //skewing inwards
         if (Math.ceil(spreadToDivide) > maxAvailableMerchants) {
             spreadToDivide = maxAvailableMerchants;
         }
-        spreadToDivide *= 1.10; //skewing inwards
         int ordersL = (int) Math.ceil((deltaL / deltaTotal) * spreadToDivide);
         int ordersM = Math.min((int) Math.ceil((Math.abs(deltaM) / deltaTotal) * spreadToDivide), maxAvailableMerchants - ordersL);
 
@@ -379,10 +379,12 @@ public class TribalWarsController {
 
         //predicates to filter out orders on basis of conditions
         double maxWarehouseThreshold = populatedVillaDetails.getResources().getWarehouseCapacity() * .90;
+        Predicate<MarketOrder> allowIffOrdersToPlacePositive = order -> order.getOrdersToPlace() > 0;
         Predicate<MarketOrder> allowIffWithinWarehouseThreshold = order -> (order.getOrdersToPlace() * 1000L + order.getRes_buy_current_val() < maxWarehouseThreshold);
         Predicate<MarketOrder> allowIffDeltaPositive = order -> order.getDeltaWithMean() > 0;
 
         return marketOrders.stream()
+                .filter(allowIffOrdersToPlacePositive)
                 .filter(allowIffWithinWarehouseThreshold)
                 .filter(allowIffDeltaPositive)
                 .collect(Collectors.toList());
@@ -487,7 +489,8 @@ public class TribalWarsController {
     @GetMapping("/triggerAutomation/engine/pricing/placeMarketOrders")
     public String pricingEngineForPlacingMarketOrders(@RequestParam(defaultValue = "p") String worldType,
                                                       @RequestParam(defaultValue = "9") int worldNumber,
-                                                      @RequestParam(defaultValue = "100") int maxMerchantsToUtilize) {
+                                                      @RequestParam(defaultValue = "100") int maxMerchantsToUtilize,
+                                                      @RequestParam(defaultValue = "*") String villaNameRegex) {
         LOGGER.info("Will start automated market order placement for en{}{}", worldType, worldNumber);
         if (!pinger.allEndPointsActive(renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
@@ -502,41 +505,46 @@ public class TribalWarsController {
         LOGGER.info("{}", villaListBuilder);
 
         AtomicInteger marketOrdersPlaced = new AtomicInteger(0);
-        for (VillaProto.Villa villa : villaListBuilder.getVillasList()) {
-            String urlToHit = String.format(TW_SCREEN, worldType, worldNumber, villa.getId(), SCREEN_TYPE.MARKET.name().toLowerCase() + "&mode=own_offer");
-            engine.getDriver().loadUrl(urlToHit);
-            String marketHtml = engine.getDriver().getDriver().getPageSource();
+        villaListBuilder.getVillasList().stream()
+                .filter(villa -> villa.getName().matches(villaNameRegex))
+                .forEach(villa -> {
+                    String urlToHit = String.format(TW_SCREEN, worldType, worldNumber, villa.getId(), SCREEN_TYPE.MARKET.name().toLowerCase() + "&mode=own_offer");
+                    engine.getDriver().loadUrl(urlToHit);
+                    String marketHtml = engine.getDriver().getDriver().getPageSource();
 
-            VillaProto.Villa populatedVillaDetails = renderServiceFeign.parseTribalWarsMarketDetails(generateSingleParcel(SCREEN_TYPE.MARKET, marketHtml));
-            int maxAvailableMerchants = Math.min(villa.getAvailableMerchants(), maxMerchantsToUtilize); //to not allow trading of more than 1L res
-            List<MarketOrder> marketOrders = generateMarketOrders(populatedVillaDetails, maxAvailableMerchants);
-            marketOrders.forEach(marketOrder -> {
-                try {
-                    Thread.sleep(201); //sleeping for allowing market order placement post page refresh
-                } catch (InterruptedException ignored) {
-                }
-                WebElement sellAmt = engine.getDriver().getDriver().findElement(By.id("res_sell_amount"));
-                sellAmt.sendKeys(String.valueOf(marketOrder.getSell_units()));
-                WebElement sellRes = engine.getDriver().getDriver().findElement(By.id(marketOrder.getRes_sell_id()));
-                sellRes.click();
+                    VillaProto.Villa populatedVillaDetails = renderServiceFeign.parseTribalWarsMarketDetails(generateSingleParcel(SCREEN_TYPE.MARKET, marketHtml));
+                    int maxAvailableMerchants = Math.min(populatedVillaDetails.getAvailableMerchants(), maxMerchantsToUtilize); //to not allow trading of more than 1L res
+                    List<MarketOrder> marketOrders = generateMarketOrders(populatedVillaDetails, maxAvailableMerchants);
+                    LOGGER.info("Computing Market Orders for '{}' merchants: {} :: w: {}, c: {}, i: {}, W: {}", villa.getName(), maxAvailableMerchants,
+                            populatedVillaDetails.getResources().getCurrentWood(), populatedVillaDetails.getResources().getCurrentClay(), populatedVillaDetails.getResources().getCurrentIron(), populatedVillaDetails.getResources().getWarehouseCapacity());
+                    marketOrders.forEach(marketOrder -> {
+                        try {
+                            Thread.sleep(201); //sleeping for allowing market order placement post page refresh
+                        } catch (InterruptedException ignored) {
+                        }
+                        WebElement sellAmt = engine.getDriver().getDriver().findElement(By.id("res_sell_amount"));
+                        sellAmt.sendKeys(String.valueOf(marketOrder.getSell_units()));
+                        WebElement sellRes = engine.getDriver().getDriver().findElement(By.id(marketOrder.getRes_sell_id()));
+                        sellRes.click();
 
-                WebElement buyAmt = engine.getDriver().getDriver().findElement(By.id("res_buy_amount"));
-                buyAmt.sendKeys(String.valueOf(marketOrder.getBuy_units()));
-                WebElement buyRes = engine.getDriver().getDriver().findElement(By.id(marketOrder.getRes_buy_id()));
-                buyRes.click();
+                        WebElement buyAmt = engine.getDriver().getDriver().findElement(By.id("res_buy_amount"));
+                        buyAmt.sendKeys(String.valueOf(marketOrder.getBuy_units()));
+                        WebElement buyRes = engine.getDriver().getDriver().findElement(By.id(marketOrder.getRes_buy_id()));
+                        buyRes.click();
 
-                WebElement offers = engine.getDriver().getDriver().findElement(By.name("multi"));
-                offers.clear();
-                offers.sendKeys(String.valueOf(marketOrder.getOrdersToPlace()));
+                        WebElement offers = engine.getDriver().getDriver().findElement(By.name("multi"));
+                        offers.clear();
+                        offers.sendKeys(String.valueOf(marketOrder.getOrdersToPlace()));
 
-                WebElement submit = engine.getDriver().getDriver().findElement(By.id("submit_offer"));
-                submit.click();
-                LOGGER.info("Placed market order => [{}]", marketOrder);
-                marketOrdersPlaced.incrementAndGet();
-            });
-        }
+                        WebElement submit = engine.getDriver().getDriver().findElement(By.id("submit_offer"));
+                        submit.click();
+                        LOGGER.info("Placed market order => [{}]", marketOrder);
+                        marketOrdersPlaced.incrementAndGet();
+                    });
+                });
         engine.logoutSequence();
         engine.destroyDriver();
+        LOGGER.info("Placed {} market orders!", marketOrdersPlaced.get());
         return String.format("Placed %s market orders!", marketOrdersPlaced.get());
     }
 
