@@ -512,7 +512,7 @@ public class TribalWarsController {
                     engine.getDriver().loadUrl(urlToHit);
                     String marketHtml = engine.getDriver().getDriver().getPageSource();
 
-                    VillaProto.Villa populatedVillaDetails = renderServiceFeign.parseTribalWarsMarketDetails(generateSingleParcel(SCREEN_TYPE.MARKET, marketHtml));
+                    VillaProto.Villa populatedVillaDetails = renderServiceFeign.parseTribalWarsMarketCreateOffers(generateSingleParcel(SCREEN_TYPE.MARKET, marketHtml));
                     int maxAvailableMerchants = Math.min(populatedVillaDetails.getAvailableMerchants(), maxMerchantsToUtilize); //to not allow trading of more than 1L res
                     List<MarketOrder> marketOrders = generateMarketOrders(populatedVillaDetails, maxAvailableMerchants);
                     LOGGER.info("Computing Market Orders for '{}' merchants: {} :: w: {}, c: {}, i: {}, W: {}", villa.getName(), maxAvailableMerchants,

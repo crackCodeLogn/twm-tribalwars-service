@@ -42,6 +42,6 @@ public interface RenderServiceFeign extends HealthFeign {
     @PostMapping("/render/tw/parse/academy/coinMintingCapacity")
     VillaProto.Villa parseTribalWarsCoinMintingCapacity(@RequestBody HtmlDataParcelProto.Parcel parcel);
 
-    @PostMapping("/render/tw/parse/market/marketDetails")
-    VillaProto.Villa parseTribalWarsMarketDetails(@RequestBody HtmlDataParcelProto.Parcel parcel);
+    @PostMapping("/render/tw/parse/market/createOffers")
+    VillaProto.Villa parseTribalWarsMarketCreateOffers(@RequestBody HtmlDataParcelProto.Parcel parcel);
 }
