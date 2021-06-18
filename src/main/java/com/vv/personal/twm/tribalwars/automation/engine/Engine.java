@@ -50,6 +50,7 @@ public class Engine {
             } catch (Exception e) {
                 LOGGER.error("Failed to login. ", e);
             }
+            sleeper(25);
             sleeper(1.5);
             driver.loadUrl(String.format(TW_MAIN_PLAY_WORLDS, worldType, worldNumber));
             sleeper(1.5);
