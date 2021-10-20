@@ -19,22 +19,23 @@ public class Engine {
     private final Sso sso;
     private final String worldType;
     private final int worldNumber;
+    private final int loginCaptchaSleep;
 
-
-    public Engine(AutomationDriver driver, Sso sso, String worldType, int worldNumber) {
+    public Engine(AutomationDriver driver, Sso sso, String worldType, int worldNumber, int loginCaptchaSleep) {
         this.driver = driver;
         this.sso = sso;
         this.worldType = worldType;
         this.worldNumber = worldNumber;
+        this.loginCaptchaSleep = loginCaptchaSleep;
+    }
+
+    public Engine(AutomationDriver driver, Sso sso, String worldType, int worldNumber) {
+        this(driver, sso, worldType, worldNumber, 25);
     }
 
     public String extractOverviewDetailsForWorld() {
         //SEQUENCE WISE
-        if (loginSequence()) {
-            final String overviewSource = driver.getDriver().getPageSource();
-            //logoutSequence();
-            return overviewSource;
-        }
+        if (loginSequence()) return driver.getDriver().getPageSource();
         return EMPTY_STR;
     }
 
@@ -50,7 +51,8 @@ public class Engine {
             } catch (Exception e) {
                 LOGGER.error("Failed to login. ", e);
             }
-            sleeper(25);
+            LOGGER.info("Sleeping for {} seconds before firing login", loginCaptchaSleep);
+            sleeper(loginCaptchaSleep);
             sleeper(1.5);
             driver.loadUrl(String.format(TW_MAIN_PLAY_WORLDS, worldType, worldNumber));
             sleeper(1.5);

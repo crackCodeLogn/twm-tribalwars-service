@@ -284,7 +284,8 @@ public class TribalWarsController {
                                                               @RequestParam(defaultValue = "9") int worldNumber,
                                                               @RequestParam(defaultValue = "70") Double resourcesThresholdPercentage,
                                                               @RequestParam(defaultValue = "60") Double mintingPercentage,
-                                                              @RequestParam(defaultValue = "3") int minCoinsToMint) {
+                                                              @RequestParam(defaultValue = "3") int minCoinsToMint,
+                                                              @RequestParam(defaultValue = "25") int captchaTimeout) {
         //TODO -- for now, this will operate on all the villas. Later on, come up with idea to control the reports to be read.
         LOGGER.info("Will start automated coin minting for en{}{}", worldType, worldNumber);
         if (!pinger.allEndPointsActive(renderServiceFeign)) {
@@ -293,7 +294,7 @@ public class TribalWarsController {
         }
         LOGGER.info("All required endpoints active. Initiating run!");
 
-        final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber);
+        final Engine engine = new Engine(tribalWarsConfiguration.driver(), tribalWarsConfiguration.sso(), worldType, worldNumber, captchaTimeout);
         String overviewHtml = engine.extractOverviewDetailsForWorld(); //keeps session open for further op!
         LOGGER.info("Extracted Overview html from world. Length: {}", overviewHtml.length());
         VillaProto.VillaList villaListBuilder = renderServiceFeign.parseTribalWarsOverviewHtml(overviewHtml);
