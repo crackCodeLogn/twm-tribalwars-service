@@ -8,6 +8,7 @@ import com.vv.personal.twm.ping.processor.Pinger;
 import com.vv.personal.twm.tribalwars.automation.config.TribalWarsConfiguration;
 import com.vv.personal.twm.tribalwars.automation.engine.Engine;
 import com.vv.personal.twm.tribalwars.constants.Constants;
+import com.vv.personal.twm.tribalwars.feign.CrdbServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
 import com.vv.personal.twm.tribalwars.util.TwUtil;
@@ -42,19 +43,18 @@ public class TribalWarsController {
 
     @Autowired
     private MongoServiceFeign mongoServiceFeign;
-
     @Autowired
     private TribalWarsConfiguration tribalWarsConfiguration;
-
     @Autowired
     private RenderServiceFeign renderServiceFeign;
-
+    @Autowired
+    private CrdbServiceFeign crdbServiceFeign;
     @Autowired
     private Pinger pinger;
 
     private VillaProto.VillaList freshVillaList = null;
 
-    @PostMapping("/addVilla")
+    @PostMapping("/addVilla") //does not support crdb at the moment.
     public String addVilla(@RequestBody VillaProto.Villa newVilla) {
         LOGGER.info("Received new Villa to be added to Mongo: {}", newVilla);
         try {
@@ -65,7 +65,7 @@ public class TribalWarsController {
         return "FAILED";
     }
 
-    @PostMapping("/deleteVilla")
+    @PostMapping("/deleteVilla") //does not support crdb at the moment.
     public String deleteVilla(@RequestBody String villaId) {
         LOGGER.info("Received TW-ID to delete: {}", villaId);
         try {
@@ -76,11 +76,14 @@ public class TribalWarsController {
         return "FAILED";
     }
 
-    @ApiOperation(value = "read all villas for world from mongo", hidden = true)
+    @ApiOperation(value = "read all villas for world from data source", hidden = true)
     @GetMapping("/read/all")
     public VillaProto.VillaList readAllVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
-                                                      @RequestParam(defaultValue = "9") int worldNumber) {
-        if (!pinger.allEndPointsActive(mongoServiceFeign)) {
+                                                      @RequestParam(defaultValue = "9") int worldNumber,
+                                                      @RequestParam(defaultValue = "true") boolean readFromMongo,
+                                                      @RequestParam(defaultValue = "false") boolean readFromCrdb) {
+        if ((readFromMongo && !pinger.allEndPointsActive(mongoServiceFeign))
+                || (readFromCrdb && !pinger.allEndPointsActive(crdbServiceFeign))) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
             return VillaProto.VillaList.newBuilder().build();
         }
@@ -89,33 +92,34 @@ public class TribalWarsController {
         //Strange, somehow this tab doesn't open in swagger. Rest all do though.
         String world = "en" + worldType + worldNumber;
         LOGGER.info("Obtained request to read all villas for world {}", world);
+        List<VillaProto.Villa> villas = new ArrayList<>();
         try {
-            VillaProto.VillaList.Builder villaList = VillaProto.VillaList.newBuilder().addAllVillas(mongoServiceFeign.readAllVillasFromMongo(world).getVillasList());
-            villaList.getVillasBuilderList().forEach(TwUtil::computeVillaType);
-            LOGGER.info("Obtained {} villas for world {} from mongo", villaList.getVillasCount(), world);
-            return villaList.build();
+            if (readFromMongo) villas = mongoServiceFeign.readAllVillasFromMongo(world).getVillasList();
+            else if (readFromCrdb) villas = crdbServiceFeign.readAllVillasFromCrdb(world).getVillasList();
         } catch (Exception e) {
-            LOGGER.error("Failed to get villas from mongo for world {}", world, e);
+            LOGGER.error("Failed to get villas from datasource for world {}", world, e);
         }
-        return VillaProto.VillaList.newBuilder().build();
+        VillaProto.VillaList.Builder villaList = VillaProto.VillaList.newBuilder().addAllVillas(villas);
+        villaList.getVillasBuilderList().forEach(TwUtil::computeVillaType);
+        LOGGER.info("Obtained {} villas for world {} from datasource", villaList.getVillasCount(), world);
+        return villaList.build();
     }
 
     @GetMapping("/read/all/manual")
     public String swaggerReadAllVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
-                                               @RequestParam(defaultValue = "9") int worldNumber) {
-        if (!pinger.allEndPointsActive(renderServiceFeign)) {
-            LOGGER.error("All end-points not active. Will not trigger op! Check log");
-            return "END-POINTS NOT READY!";
-        }
-        LOGGER.info("All required endpoints active. Initiating run!");
-        return renderServiceFeign.renderTribalWarsVillas(readAllVillasForWorld(worldType, worldNumber));
+                                               @RequestParam(defaultValue = "9") int worldNumber,
+                                               @RequestParam(defaultValue = "true") boolean readFromMongo,
+                                               @RequestParam(defaultValue = "false") boolean readFromCrdb) {
+        return renderServiceFeign.renderTribalWarsVillas(readAllVillasForWorld(worldType, worldNumber, readFromMongo, readFromCrdb));
     }
 
     @ApiOperation(value = "get all latest villas for world", hidden = true)
     @GetMapping("/read/all/latest")
     public VillaProto.VillaList readAllLatestVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
-                                                            @RequestParam(defaultValue = "9") int worldNumber) {
-        VillaProto.VillaList villaList = readAllVillasForWorld(worldType, worldNumber);
+                                                            @RequestParam(defaultValue = "9") int worldNumber,
+                                                            @RequestParam(defaultValue = "true") boolean readFromMongo,
+                                                            @RequestParam(defaultValue = "false") boolean readFromCrdb) {
+        VillaProto.VillaList villaList = readAllVillasForWorld(worldType, worldNumber, readFromMongo, readFromCrdb);
         long latestTimestamp = villaList.getVillasList().stream().mapToLong(VillaProto.Villa::getTimestamp).max().orElse(NA_LONG);
         LOGGER.info("Computed latest timestamp as: {}", latestTimestamp);
         VillaProto.VillaList.Builder builder = VillaProto.VillaList.newBuilder()
@@ -128,22 +132,21 @@ public class TribalWarsController {
 
     @GetMapping("/read/all/latest/manual")
     public String swaggerReadAllLatestVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
-                                                     @RequestParam(defaultValue = "9") int worldNumber) {
-        if (!pinger.allEndPointsActive(renderServiceFeign)) {
-            LOGGER.error("All end-points not active. Will not trigger op! Check log");
-            return "END-POINTS NOT READY!";
-        }
-        LOGGER.info("All required endpoints active. Initiating run!");
-        VillaProto.VillaList villaList = readAllLatestVillasForWorld(worldType, worldNumber);
-        return renderServiceFeign.renderTribalWarsVillas(villaList);
+                                                     @RequestParam(defaultValue = "9") int worldNumber,
+                                                     @RequestParam(defaultValue = "true") boolean readFromMongo,
+                                                     @RequestParam(defaultValue = "false") boolean readFromCrdb) {
+        return renderServiceFeign.renderTribalWarsVillas(readAllLatestVillasForWorld(worldType, worldNumber, readFromMongo, readFromCrdb));
     }
 
     @GetMapping("/triggerAutomation/troops")
     public String triggerAutomationForTroops(@RequestParam(defaultValue = "p") String worldType,
                                              @RequestParam(defaultValue = "9") int worldNumber,
+                                             @RequestParam(defaultValue = "false") boolean writeBackToCrdb,
                                              @RequestParam(defaultValue = "false") boolean writeBackToMongo) {
         LOGGER.info("Will start automated extraction of troops count for en{}{}", worldType, worldNumber);
-        if (writeBackToMongo && !pinger.allEndPointsActive(mongoServiceFeign, renderServiceFeign) || !pinger.allEndPointsActive(renderServiceFeign)) {
+        if ((writeBackToCrdb && !pinger.allEndPointsActive(crdbServiceFeign, renderServiceFeign))
+                || (writeBackToMongo && !pinger.allEndPointsActive(mongoServiceFeign, renderServiceFeign))
+                || !pinger.allEndPointsActive(renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
             return "END-POINTS NOT READY!";
         }
@@ -203,6 +206,15 @@ public class TribalWarsController {
         } catch (Exception e) {
             LOGGER.error("FAILED to render final villa list! ", e);
         }
+        if (writeBackToCrdb) {
+            try {
+                LOGGER.info("Sending data to save to CRDB - all villas read");
+                crdbServiceFeign.addVillas(finalVillaList);
+                LOGGER.info("CRDB Write successful!");
+            } catch (Exception e) {
+                LOGGER.error("Failed to writeback to crdb. ", e);
+            }
+        } else LOGGER.info("Skipping CRDB writeback!");
         if (writeBackToMongo) {
             try {
                 LOGGER.info("Sending data to save to mongo - all villas read");
@@ -212,7 +224,7 @@ public class TribalWarsController {
                 LOGGER.error("Failed to writeback to mongo. ", e);
             }
         } else LOGGER.info("Skipping mongo writeback!");
-        return renderedInfo; //returning renderedInfo to swagger as mongo just sends an OK state or not.
+        return renderedInfo; //returning renderedInfo to swagger
     }
 
     @GetMapping("/triggerAutomation/supportReportsAnalysis")
@@ -286,7 +298,6 @@ public class TribalWarsController {
                                                               @RequestParam(defaultValue = "60") Double mintingPercentage,
                                                               @RequestParam(defaultValue = "3") int minCoinsToMint,
                                                               @RequestParam(defaultValue = "25") int captchaTimeout) {
-        //TODO -- for now, this will operate on all the villas. Later on, come up with idea to control the reports to be read.
         LOGGER.info("Will start automated coin minting for en{}{}", worldType, worldNumber);
         if (!pinger.allEndPointsActive(renderServiceFeign)) {
             LOGGER.error("All end-points not active. Will not trigger op! Check log");
@@ -438,7 +449,9 @@ public class TribalWarsController {
                                                      @RequestParam(defaultValue = "9") int worldNumber,
                                                      @RequestParam(defaultValue = "OFF") VillaProto.VillaType villaType,
                                                      @RequestParam(defaultValue = "xxx|yyy") String destinationCoordinate,
-                                                     @RequestParam(defaultValue = "5") int depth) {
+                                                     @RequestParam(defaultValue = "5") int depth,
+                                                     @RequestParam(defaultValue = "true") boolean readFromMongo,
+                                                     @RequestParam(defaultValue = "false") boolean readFromCrdb) {
         if (!isCoordinateValid(destinationCoordinate)) {
             String err = "Unrecognized destination coordinates: " + destinationCoordinate;
             LOGGER.warn(err);
@@ -453,8 +466,9 @@ public class TribalWarsController {
         }
         LOGGER.info("All required endpoints active. Initiating run!");
         VillaProto.VillaList.Builder villaList = VillaProto.VillaList.newBuilder()
-                .addAllVillas(readAllLatestVillasForWorld(worldType, worldNumber).getVillasList()
-                        .stream().filter(villa -> villa.getType() == villaType).collect(Collectors.toList()));
+                .addAllVillas(readAllLatestVillasForWorld(worldType, worldNumber, readFromMongo, readFromCrdb)
+                        .getVillasList().stream().filter(villa -> villa.getType() == villaType).collect(Collectors.toList())
+                );
         LOGGER.info("Found {} villas of mine matching type: {}", villaList.getVillasCount(), villaType);
         villaList.getVillasBuilderList().forEach(villa -> {
             villa.putExtraDoubles(DISTANCE_WITH_COMPARING_VILLA_KEY, Double.parseDouble(String.format("%.2f", TwUtil.computeDistance(villa.getX(), villa.getY(), destX, destY))));
@@ -469,15 +483,6 @@ public class TribalWarsController {
         LOGGER.info("Narrowing down to {} villas matching the least distance computation", villaList.getVillasCount());
         return renderServiceFeign.renderTribalWarsVillas(villaList.build());
     }
-
-    /*@GetMapping("/triggerAutomation/scavenge")
-    public String triggerAnalysisScavenging(@RequestParam(defaultValue = "p") String worldType,
-                                            @RequestParam(defaultValue = "9") int worldNumber,
-                                            @RequestParam(defaultValue = "false") boolean writeBackToMongo) {
-        LOGGER.info("Will start automated extraction of scavenging count for en{}{}", worldType, worldNumber);
-
-        return "";
-    }*/
 
     private HtmlDataParcelProto.Parcel generateParcel(String wallHtml, String trainHtml, String snobHtml) {
         return HtmlDataParcelProto.Parcel.newBuilder()
