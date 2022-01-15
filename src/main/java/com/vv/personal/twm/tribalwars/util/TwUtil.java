@@ -12,7 +12,10 @@ import java.util.Map;
  * @author Vivek
  * @since 21/02/21
  */
-public class TwUtil {
+public final class TwUtil {
+
+    private TwUtil() {
+    }
 
     public static boolean isCoordinateValid(String coordinate) {
         return coordinate.matches("[0-9]{3}\\|[0-9]{3}");
