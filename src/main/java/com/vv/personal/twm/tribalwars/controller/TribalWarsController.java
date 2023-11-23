@@ -12,7 +12,7 @@ import com.vv.personal.twm.tribalwars.feign.CrdbServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.MongoServiceFeign;
 import com.vv.personal.twm.tribalwars.feign.RenderServiceFeign;
 import com.vv.personal.twm.tribalwars.util.TwUtil;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.v3.oas.annotations.Operation;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -76,7 +76,7 @@ public class TribalWarsController {
         return "FAILED";
     }
 
-    @ApiOperation(value = "read all villas for world from data source", hidden = true)
+    @Operation(summary = "read all villas for world from data source", hidden = true)
     @GetMapping("/read/all")
     public VillaProto.VillaList readAllVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
                                                       @RequestParam(defaultValue = "9") int worldNumber,
@@ -113,7 +113,7 @@ public class TribalWarsController {
         return renderServiceFeign.renderTribalWarsVillas(readAllVillasForWorld(worldType, worldNumber, readFromMongo, readFromCrdb));
     }
 
-    @ApiOperation(value = "get all latest villas for world", hidden = true)
+    @Operation(summary = "get all latest villas for world", hidden = true)
     @GetMapping("/read/all/latest")
     public VillaProto.VillaList readAllLatestVillasForWorld(@RequestParam(defaultValue = "p") String worldType,
                                                             @RequestParam(defaultValue = "9") int worldNumber,
