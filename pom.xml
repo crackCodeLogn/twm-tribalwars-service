@@ -6,7 +6,7 @@
 
     <groupId>com.vv.personal</groupId>
     <artifactId>twm-tribalwars-service</artifactId>
-    <version>2.0-SNAPSHOT</version>
+    <version>2.1.1</version>
     <description>TW service to handle all Tribal wars related actions</description>
     <packaging>jar</packaging>
 
@@ -16,6 +16,9 @@
         <java.version>17</java.version>
         <spring-cloud.version>2022.0.4</spring-cloud.version>
         <lombok.version>1.18.22</lombok.version>
+        <protobuf.version>4.27.3</protobuf.version>
+        <ping-client.version>1.0.4</ping-client.version>
+        <artifactory.version>1.1.2</artifactory.version>
     </properties>
 
     <build>
@@ -79,13 +82,13 @@
         <dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java</artifactId>
-            <version>3.21.10</version>
+            <version>${protobuf.version}</version>
         </dependency>
 
         <dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java-util</artifactId>
-            <version>3.21.10</version>
+            <version>${protobuf.version}</version>
         </dependency>
 
         <dependency>
@@ -139,7 +142,12 @@
         <dependency>
             <groupId>com.vv.personal</groupId>
             <artifactId>twm-artifactory</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <version>${artifactory.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vv.personal</groupId>
+            <artifactId>twm-ping-client</artifactId>
+            <version>${ping-client.version}</version>
         </dependency>
     </dependencies>
 
